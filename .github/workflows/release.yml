@@ -6,8 +6,9 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        runner: [macos-14, macos-15-intel]
+        runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +21,7 @@ jobs:
           uv run --python 3.12 --no-project python -m unittest discover -s tests -v
           runtime_root="$(uv run --python 3.12 --no-project python -c 'import sys; print(sys.base_prefix)')"
           uv run --python 3.12 --no-project python scripts/build_macos.py --python-runtime "$runtime_root"
+          STARHAVEN_TEST_INSTALLER="build/macos-$(uname -m)/安装星栖小镇.app" uv run --python 3.12 --no-project python tests/test_installer_integration.py -v
           uv run --python 3.12 --no-project python scripts/export_source.py
       - uses: actions/upload-artifact@v4
         with:
