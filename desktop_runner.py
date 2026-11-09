@@ -33,16 +33,40 @@ def migrate_legacy(data_dir, legacy_dir):
         return False
     data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     pending = data_dir / "migration.sqlite3"
+    source = dest = None
     try:
-        with sqlite3.connect(original.as_uri() + "?mode=ro", uri=True) as source:
-            with sqlite3.connect(str(pending)) as dest:
-                source.backup(dest)
-                if dest.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-                    raise RuntimeError("原有聊天数据校验未通过，已保留原文件。")
+        if pending.exists():
+            pending.unlink()
+        source = sqlite3.connect(original.as_uri() + "?mode=ro", uri=True)
+        dest = sqlite3.connect(str(pending))
+        try:
+            source.backup(dest)
+            if dest.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RuntimeError("原有聊天数据校验未通过，已保留原文件。")
+            dest.commit()
+        finally:
+            dest.close()
+            dest = None
+            source.close()
+            source = None
         _secure_chmod(pending, 0o600)
         pending.replace(target)
     finally:
-        pending.unlink(missing_ok=True)
+        if dest is not None:
+            try:
+                dest.close()
+            except Exception:
+                pass
+        if source is not None:
+            try:
+                source.close()
+            except Exception:
+                pass
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            # Windows may briefly keep a handle; migration result already replaced or failed closed.
+            pass
     return True
 
 

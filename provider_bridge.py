@@ -148,7 +148,10 @@ class ProviderBridge:
             try:
                 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=str(self.data_dir), prefix=".provider-", delete=False) as stream:
                     temporary = Path(stream.name)
-                    os.chmod(str(temporary), 0o600)
+                    try:
+                        os.chmod(str(temporary), 0o600)
+                    except OSError:
+                        pass
                     json.dump(config, stream, ensure_ascii=False, indent=2)
                     stream.write("\n")
                     stream.flush()

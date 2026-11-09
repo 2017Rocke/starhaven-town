@@ -79,7 +79,8 @@ class ProviderTest(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(saved))
         self.assertNotIn("api_key", json.loads(self.bridge.path.read_text()))
         self.assertNotIn(secret, self.bridge.path.read_text())
-        self.assertEqual(self.bridge.path.stat().st_mode & 0o777, 0o600)
+        if sys.platform != "win32":
+            self.assertEqual(self.bridge.path.stat().st_mode & 0o777, 0o600)
         different = self.bridge.save_settings(dict(self.config, base_url="https://other.example/v1"))
         self.assertFalse(different["has_api_key"])
         self.assertTrue(self.bridge.save_settings(self.config)["has_api_key"])

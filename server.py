@@ -61,14 +61,35 @@ class APIError(Exception):
 def _lock_instance(file_obj):
     """Non-blocking exclusive lock for one data directory."""
     if sys.platform == "win32":
+        import ctypes
         import msvcrt
+        from ctypes import wintypes
+
+        # Ensure the file has at least one byte so the lock range is valid.
+        file_obj.seek(0, 2)
+        if file_obj.tell() == 0:
+            file_obj.write("0")
+            file_obj.flush()
         file_obj.seek(0)
-        file_obj.write("0")
-        file_obj.flush()
-        try:
-            msvcrt.locking(file_obj.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError as exc:
-            raise BlockingIOError from exc
+
+        class OVERLAPPED(ctypes.Structure):
+            _fields_ = [
+                ("Internal", ctypes.c_ulonglong),
+                ("InternalHigh", ctypes.c_ulonglong),
+                ("Offset", wintypes.DWORD),
+                ("OffsetHigh", wintypes.DWORD),
+                ("hEvent", wintypes.HANDLE),
+            ]
+
+        kernel32 = ctypes.windll.kernel32
+        handle = msvcrt.get_osfhandle(file_obj.fileno())
+        overlapped = OVERLAPPED()
+        LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
+        LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
+        if not kernel32.LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, ctypes.byref(overlapped)):
+            raise BlockingIOError
+        # Keep a marker so close() is enough to release via OS handle lifetime.
+        file_obj._starhaven_win_lock = True
     else:
         import fcntl
         fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
