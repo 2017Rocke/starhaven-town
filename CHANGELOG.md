@@ -1,5 +1,12 @@
 # 版本记录
 
+## 1.2.0 · 2026-11-09
+
+- 新增 Windows 10 x64（Intel/AMD）便携桌面包：内置 Python 运行时 + WebView2 窗口。
+- Windows API 密钥写入系统凭据管理器，不写入项目目录或安装目录明文文件。
+- 构建脚本 `scripts/build_windows.py`，GitHub Actions 可在 `windows-latest` 出包。
+- 日常使用继续以桌面版为准；移除浏览器固定端口作为产品入口的引导。
+
 ## 1.1.0 · 2026-11-09
 
 - macOS 原生窗口、应用图标、一键安装器与保留数据的覆盖升级。

@@ -1,10 +1,10 @@
-name: Build macOS installers
+name: Build installers
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  build:
+  macos:
     strategy:
       fail-fast: false
       matrix:
@@ -26,4 +26,24 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: starhaven-${{ matrix.runner }}
+          path: dist/*
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.5'
+      - name: Test and build Windows x64 package
+        shell: pwsh
+        run: |
+          uv python install 3.12
+          uv run --python 3.12 --no-project python -m unittest discover -s tests -v
+          $runtime = uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"
+          uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime $runtime
+          uv run --python 3.12 --no-project python scripts/export_source.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starhaven-windows-x64
           path: dist/*

@@ -2,6 +2,9 @@
 
 ## 本机构建
 
+### macOS
+
+
 需要 macOS、Apple Command Line Tools 和来源可信的**可重定位 Python 发行包**。推荐 [python-build-standalone](https://github.com/astral-sh/python-build-standalone) 或 `uv python install 3.12` 安装的托管 Python。依赖本机 Framework 的普通 Python 不适合嵌入分发。
 
 ```sh
@@ -15,7 +18,7 @@ python3 scripts/export_source.py
 
 输出 `dist/StarhavenTown-版本-macOS-架构.dmg`、校验和，以及 `starhaven-town-版本-source.zip`。开发用 app 位于 `build/macos-架构/`。安装包含运行环境，源码包需要用户自行安装 Python。
 
-源码、网页和内置 runtime 进入 app；个人模型账号、数据库、团队配置不进入 app。Mac 服务使用随机本机端口，不占用原网页版 8877。
+源码、网页和内置 runtime 进入 app；个人模型账号、数据库、团队配置不进入 app。Mac 服务使用随机本机端口，由桌面窗口自动加载，不提供固定浏览器入口。
 
 ## 版本与更新
 
@@ -52,3 +55,17 @@ xcrun stapler staple dist/StarhavenTown-VERSION-macOS-arm64.dmg
 ```
 
 替换版本、架构与身份。公证完成后重新计算 DMG 的 SHA-256。自动工作流默认只构建预览包，未声称已完成签名公证。未来在线升级需验证可信发布源、签名、失败回滚及用户控制。
+
+
+### Windows 10 x64
+
+在 **64 位 Windows** 上构建（本机 Intel/AMD 或 GitHub `windows-latest`）：
+
+```bat
+uv python install 3.12
+for /f %i in ('uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"') do set RUNTIME=%i
+uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime %RUNTIME%
+uv run --python 3.12 --no-project python scripts/export_source.py
+```
+
+输出 `dist/StarhavenTown-版本-windows-x64.zip` 与 `.sha256`。包内含嵌入式 Python、WebView 依赖与 `启动星栖小镇.cmd`。用户数据在 `%LOCALAPPDATA%\StarhavenTown\`，密钥在 Windows 凭据管理器。

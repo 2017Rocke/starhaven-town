@@ -138,7 +138,7 @@
           <label class="field-label" for="model-base-url">服务地址<input id="model-base-url" name="base_url" type="url" required maxlength="500" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" autocomplete="url" spellcheck="false"></label>
           <label class="field-label" for="model-name">模型名称<input id="model-name" name="model" required maxlength="160" placeholder="填写服务商提供的模型名称" autocomplete="off" spellcheck="false"></label>
           <label class="field-label" for="model-api-key">API 密钥 <span id="api-key-status">尚未读取保存状态</span><input id="model-api-key" name="api_key" type="password" maxlength="4096" placeholder="粘贴你的 API 密钥" autocomplete="new-password" spellcheck="false" aria-describedby="api-key-help"></label>
-          <p class="settings-help" id="api-key-help">macOS 上密钥存入系统钥匙串，不会回填到页面；其他平台使用环境变量 STARHAVEN_API_KEY。留空可继续使用已有密钥。</p>
+          <p class="settings-help" id="api-key-help">macOS 存钥匙串，Windows 存凭据管理器，均不会回填到页面；其他平台可用环境变量 STARHAVEN_API_KEY。留空可继续使用已有密钥。</p>
         </fieldset>
       </fieldset>
       <p class="form-error" id="model-settings-error" role="alert" hidden></p>

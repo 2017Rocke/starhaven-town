@@ -124,7 +124,8 @@ class ProviderBridge:
                 configured=result["mode"] == "codex" or bool(result["base_url"] and result["model"]),
                 storage_message=key_error or (
                     "当前使用 STARHAVEN_API_KEY 环境变量中的密钥；界面不会显示密钥。" if os.environ.get("STARHAVEN_API_KEY", "").strip() else
-                    "密钥保存在 macOS 钥匙串中，不会写入项目文件。" if self.credentials.supports_persistence else
+                    "密钥保存在 macOS 钥匙串中，不会写入项目文件。" if self.credentials.storage == "keychain" else
+                    "密钥保存在 Windows 凭据管理器中，不会写入项目文件。" if self.credentials.storage == "credential-manager" else
                     "此系统使用 STARHAVEN_API_KEY 环境变量，不在文件中保存密钥；本地模型可不填密钥。"),
             )
             if self._config_error:
