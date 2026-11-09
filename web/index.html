@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f2e9">
+  <title>星栖小镇 · 和智能体一起成长</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="symbol-library" aria-hidden="true"><defs>
+    <symbol id="i-town" viewBox="0 0 24 24"><path d="M3 11h3V8h3V5h6v3h3v3h3M5 11v9h14v-9M10 20v-6h4v6"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><path d="M6 5H3v16h18V5h-3M9 3h6v5H9zM7 12h2m3 0h5M7 16h2m3 0h5"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19v-7h4V8h5V4h6v8h-4v4h-5v3H5zm0 0 9-9M3 21l2-2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4V4zM8 9h8M8 13h5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m4 4 17 8-17 8 4-8-4-8zm4 8h13"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M10 3v5H5v6h5v5h6v-5h5V8h-5V3zM2 20h3M3.5 18.5v3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M8 3h8v8H8zM4 21v-5h3v-3h10v3h3v5H4z"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 16 12-12 4 4L8 20H4v-4zm9-9 4 4"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 2v15"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5zm4 3v6l4 3"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9 3h6v3h3v3h3v6h-3v3h-3v3H9v-3H6v-3H3V9h3V6h3V3zm0 6h6v6H9V9z"/></symbol>
+  </defs></svg>
+
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand-mark" href="#town" aria-label="星栖小镇首页"><img src="/assets/favicon.svg" alt=""></a>
+      <div class="rail-nav" role="tablist" aria-label="小镇功能">
+        <button class="nav-item active" id="tab-town" data-view="town" role="tab" aria-selected="true" aria-controls="view-town"><svg><use href="#i-town"/></svg><span>小镇</span></button>
+        <button class="nav-item" id="tab-tasks" data-view="tasks" role="tab" aria-selected="false" aria-controls="view-tasks"><svg><use href="#i-board"/></svg><span>任务板</span></button>
+        <button class="nav-item" id="tab-growth" data-view="growth" role="tab" aria-selected="false" aria-controls="view-growth"><svg><use href="#i-leaf"/></svg><span>成长册</span></button>
+      </div>
+      <button class="nav-item add-nav" id="add-agent-nav" title="邀请新居民"><svg><use href="#i-plus"/></svg><span>新居民</span></button>
+      <div class="rail-bottom"><div class="mayor-pixel" aria-hidden="true"></div><span>镇长</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="wordmark"><strong id="town-name">星栖小镇</strong><span>AGENT VILLAGE</span></div>
+        <div class="topbar-tools"><div class="world-time"><span class="pixel-sun" aria-hidden="true"></span><span id="today-label">一起，慢慢变好</span></div><button id="open-settings" class="settings-entry" type="button" aria-haspopup="dialog"><svg><use href="#i-settings"/></svg><span>小镇设置</span></button></div>
+      </header>
+
+      <section id="view-town" class="view town-view" role="tabpanel" aria-labelledby="tab-town">
+        <div class="welcome-row"><div><p class="eyebrow">YOUR LITTLE WORLD, GROWING TOGETHER</p><h1>每个伙伴，都有自己的光。</h1><p class="welcome-copy">来小镇走走，聊聊想法，一起把事情做好。</p></div><span class="season-tag"><span></span>共建进行中</span></div>
+        <div class="town-scene" aria-label="像素小镇地图，点击建筑与居民开始对话">
+          <img class="map-art" src="/assets/town.svg" alt="温暖的像素小镇，有指挥所、观察站、菜园、树木和一条蓝色小河">
+          <div class="map-caption"><span class="live-dot"></span><span>小镇漫游</span><span class="caption-divider"></span><span id="resident-count">等待伙伴回家</span></div>
+          <span class="map-coordinate" aria-hidden="true">STARHAVEN · 01</span>
+          <button class="building-hit captain-home" data-agent="linghang" aria-label="进入指挥所，与领航对话"><span class="building-label"><span class="tiny-dot captain-dot"></span>指挥所<span class="label-arrow">↗</span></span><span class="building-selected" aria-hidden="true"></span></button>
+          <button class="building-hit scout-home" data-agent="scout" aria-label="进入观察站，与星探对话"><span class="building-label"><span class="tiny-dot scout-dot"></span>观察站<span class="label-arrow">↗</span></span><span class="building-selected" aria-hidden="true"></span></button>
+          <button class="map-resident captain-resident" data-agent="linghang" aria-label="与领航对话"><span class="resident-bubble">一起把想法落地吧</span><img src="/assets/captain.svg" alt="领航的像素角色"><span class="map-name">领航</span></button>
+          <button class="map-resident scout-resident" data-agent="scout" aria-label="与星探对话"><span class="resident-bubble">今天有什么新发现？</span><img src="/assets/scout.svg" alt="星探的像素角色"><span class="map-name">星探</span></button>
+          <button class="garden-sign" data-open-view="growth"><svg><use href="#i-leaf"/></svg><span>一起成长的小花园</span><span>↗</span></button>
+          <div class="map-tip"><svg><use href="#i-chat"/></svg><span>点击伙伴，开启一段对话</span></div>
+          <div class="map-compass" aria-hidden="true"><span>N</span><div>✦</div></div>
+        </div>
+        <div class="town-note"><div class="note-icon"><svg><use href="#i-spark"/></svg></div><div><strong>小镇的成长，来自真实的行动</strong><p id="team-status">正在了解伙伴们的近况…</p></div><button class="text-button" data-open-view="growth">翻开成长册 <span>→</span></button></div>
+        <div class="below-map"><span><span class="square-dot"></span>各有所长，也彼此照应</span><span>一点灵感 · 一份默契 · 每天进步一点点</span></div>
+      </section>
+
+      <section id="view-tasks" class="view content-view" role="tabpanel" aria-labelledby="tab-tasks" hidden>
+        <div class="page-heading"><p class="eyebrow">GOOD THINGS TAKE A LITTLE TEAMWORK</p><h1>小镇任务板</h1><p>每件事都有去处，每次交接都有回应。</p></div>
+        <div class="notice-strip"><svg><use href="#i-board"/></svg><p id="task-mode-label">正在读取团队的工作安排…</p></div>
+        <div id="work-list" class="work-list"></div>
+        <div class="section-heading"><h2>伙伴的研究手记</h2><span>有据可查的成果</span></div>
+        <div id="report-list" class="report-list"></div>
+      </section>
+
+      <section id="view-growth" class="view content-view" role="tabpanel" aria-labelledby="tab-growth" hidden>
+        <div class="page-heading"><p class="eyebrow">SMALL STEPS, REAL GROWTH</p><h1>一起成长的日子</h1><p>记住每一次协作，也认真对待每一点进步。</p></div>
+        <div id="growth-residents" class="growth-grid"></div>
+        <div class="growth-explainer"><svg><use href="#i-leaf"/></svg><div><strong>能力要有证据，陪伴也值得记录。</strong><p>工作验收与验证通过的改进，记录伙伴的真实能力成长。聊天次数和相伴天数，只记录你们的互动。</p></div></div>
+        <div class="section-heading"><h2>能力成长记录</h2><span>每一步，都踏实</span></div>
+        <div id="improvement-list" class="improvement-list"></div>
+      </section>
+
+      <div class="connection-banner" id="connection-banner" role="alert" hidden><span id="connection-error"></span><button id="reload-state">重新连接</button></div>
+    </main>
+
+    <aside class="companion-panel" aria-label="居民与对话">
+      <div class="panel-heading"><div><h2>我的伙伴</h2><span id="panel-resident-count">小镇居民</span></div><button class="icon-button" id="add-agent" aria-label="邀请新居民" title="邀请新居民"><svg><use href="#i-plus"/></svg></button></div>
+      <div class="resident-list" id="resident-list" aria-label="选择对话伙伴"></div>
+      <div class="selected-profile" id="selected-profile"><div class="profile-loading">伙伴正在回家的路上…</div></div>
+      <div class="conversation-heading"><div><span class="tiny-dot"></span><span id="conversation-title">小镇会客厅</span></div><button class="text-button" id="edit-profile" disabled>角色档案 <svg><use href="#i-arrow"/></svg></button></div>
+      <div class="chat-messages" id="chat-messages" role="log" aria-label="与伙伴的对话" aria-live="polite" aria-relevant="additions text"></div>
+      <div class="chat-alert" id="chat-alert" role="alert" hidden></div>
+      <div class="suggestions" id="suggestions" aria-label="聊天灵感"></div>
+      <form class="chat-form" id="chat-form">
+        <label class="sr-only" for="chat-input">发给当前伙伴的消息</label>
+        <textarea id="chat-input" rows="2" maxlength="8000" placeholder="告诉伙伴，你在想什么…" disabled></textarea>
+        <div class="composer-bottom"><span class="composer-hint">Enter 发送 · Shift + Enter 换行</span><button class="send-button" id="send-message" type="submit" aria-label="发送消息" disabled><svg><use href="#i-send"/></svg></button><button class="stop-button" id="stop-message" type="button" hidden><svg><use href="#i-stop"/></svg>停止</button></div>
+      </form>
+      <div class="provider-status" id="provider-status"><span class="status-dot"></span><span>正在连接伙伴…</span></div>
+    </aside>
+  </div>
+
+  <dialog id="profile-dialog" class="town-dialog">
+    <form id="profile-form">
+      <div class="dialog-header"><div><p class="eyebrow" id="dialog-eyebrow">A FRIEND WITH A STORY</p><h2 id="profile-dialog-title">角色档案</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭角色档案"><svg><use href="#i-close"/></svg></button></div>
+      <p class="dialog-copy" id="dialog-copy">把伙伴的风格、故事和需要记住的事，慢慢补充完整。</p>
+      <fieldset id="avatar-picker" class="avatar-picker"><legend>选一个喜欢的形象</legend><label><input type="radio" name="avatar" value="captain" checked><img src="/assets/captain.svg" alt="稳重的队长"></label><label><input type="radio" name="avatar" value="scout"><img src="/assets/scout.svg" alt="好奇的研究员"></label><label><input type="radio" name="avatar" value="maker"><img src="/assets/maker.svg" alt="专注的创造者"></label><label><input type="radio" name="avatar" value="gardener"><img src="/assets/gardener.svg" alt="温和的园艺师"></label></fieldset>
+      <label class="field-label" for="agent-name">伙伴的名字<input id="agent-name" name="name" maxlength="32" required placeholder="给伙伴起个名字"></label>
+      <label class="field-label" id="role-field" for="agent-role">擅长的工作<input id="agent-role" name="role" maxlength="80" placeholder="例如：创意设计师、知识整理员"></label>
+      <label class="field-label" for="agent-personality">相处的风格<textarea id="agent-personality" name="personality" maxlength="1500" rows="2" placeholder="例如：温柔直接，喜欢用具体例子解释复杂问题"></textarea></label>
+      <label class="field-label" for="agent-bio">关于这位伙伴<textarea id="agent-bio" name="bio" maxlength="2000" rows="3" placeholder="伙伴的职责、兴趣和你希望一起完成的事"></textarea></label>
+      <label class="field-label" id="memories-field" for="agent-memories">共同记忆 <span>每行一条，由你明确决定</span><textarea id="agent-memories" name="memories" maxlength="10000" rows="4" placeholder="例如：我喜欢先看结论，再了解过程"></textarea></label>
+      <p class="form-error" id="profile-error" role="alert" hidden></p>
+      <div class="dialog-footer"><button class="secondary-button" type="button" data-close-dialog>先这样</button><button class="primary-button" id="save-profile" type="submit">保存档案 <span>→</span></button></div>
+    </form>
+  </dialog>
+  <dialog id="settings-dialog" class="town-dialog settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-header"><div><p class="eyebrow">MAKE THIS LITTLE WORLD YOURS</p><h2 id="settings-title">小镇设置</h2></div><button type="button" class="icon-button" id="close-settings" aria-label="关闭小镇设置"><svg><use href="#i-close"/></svg></button></div>
+    <section class="settings-section" aria-labelledby="skin-heading">
+      <div class="settings-section-heading"><h3 id="skin-heading">给小镇换件衣服</h3><span>选择后立即生效</span></div>
+      <div class="skin-options" id="skin-options" role="group" aria-label="小镇皮肤"><p class="settings-help">正在打开小镇衣橱…</p></div>
+      <p id="skin-error" class="form-error" role="alert" hidden></p>
+      <p class="settings-help">皮肤只改变外观，伙伴、记忆和聊天记录会一直在。</p>
+    </section>
+    <form id="model-settings-form" class="settings-section">
+      <div class="settings-section-heading"><h3>与伙伴建立连接</h3><span>所有角色共用模型服务</span></div>
+      <p class="settings-help">角色档案、换装和本地记录无需连接就能使用。聊天会使用你所选模型服务的额度，消息、角色设定和相关记忆会发给该服务。</p>
+      <fieldset id="model-settings-fields" class="model-settings-fields" disabled>
+        <legend class="sr-only">选择模型连接方式</legend>
+        <div class="model-mode-options">
+          <label><input type="radio" name="model-mode" value="codex" checked><span><strong>沿用本机 Codex</strong><small>使用这台电脑已有的模型配置</small></span></label>
+          <label><input type="radio" name="model-mode" value="api"><span><strong>连接模型 API</strong><small>填写兼容 OpenAI 的服务信息</small></span></label>
+        </div>
+        <p class="settings-help mode-copy" id="codex-mode-copy">适合已安装并配置 Codex 的电脑。小镇会沿用已有配置，无需在这里填写密钥。</p>
+        <fieldset id="api-settings-fields" class="api-settings-fields" hidden disabled>
+          <legend class="sr-only">API 连接信息</legend>
+          <label class="field-label" for="model-base-url">服务地址<input id="model-base-url" name="base_url" type="url" required maxlength="500" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" autocomplete="url" spellcheck="false"></label>
+          <label class="field-label" for="model-name">模型名称<input id="model-name" name="model" required maxlength="160" placeholder="填写服务商提供的模型名称" autocomplete="off" spellcheck="false"></label>
+          <label class="field-label" for="model-api-key">API 密钥 <span id="api-key-status">尚未读取保存状态</span><input id="model-api-key" name="api_key" type="password" maxlength="4096" placeholder="粘贴你的 API 密钥" autocomplete="new-password" spellcheck="false" aria-describedby="api-key-help"></label>
+          <p class="settings-help" id="api-key-help">macOS 上密钥存入系统钥匙串，不会回填到页面；其他平台使用环境变量 STARHAVEN_API_KEY。留空可继续使用已有密钥。</p>
+        </fieldset>
+      </fieldset>
+      <p class="form-error" id="model-settings-error" role="alert" hidden></p>
+      <div class="model-settings-state" id="model-settings-state" role="status">正在读取模型设置…</div>
+      <div class="dialog-footer"><button class="secondary-button" type="button" id="reload-model-settings" hidden>重新读取</button><button class="primary-button" id="save-model-settings" type="submit" disabled>保存连接设置 <span>→</span></button></div>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "default": "meadow",
+  "skins": [
+    {
+      "id": "meadow",
+      "name": "暖绿原野",
+      "description": "阳光、麦田与慢慢变好的日子",
+      "css": "/skins/meadow.css"
+    },
+    {
+      "id": "starlight",
+      "name": "星夜营地",
+      "description": "灯火与星光，陪灵感晚一点睡",
+      "css": "/skins/starlight.css"
+    }
+  ]
+}

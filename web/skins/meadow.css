@@ -1,0 +1,14 @@
+/* The original warm meadow. Shared appearance lives in app.css. */
+:root[data-skin="meadow"] {
+  color-scheme: light;
+  --paper: #f5f2e9;
+  --surface: #fffdf6;
+  --ink: #294b3d;
+  --muted: #829084;
+  --line: #e2e5d8;
+  --green: #52775b;
+  --green-dark: #365d48;
+  --mint: #e7edda;
+  --orange: #c5815a;
+  --shadow: #dce0cf;
+}

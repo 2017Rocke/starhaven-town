@@ -1,0 +1,21 @@
+/* Copy this file to your-skin-id.css, then register it in manifest.json.
+   Replace every template ID below. Keep all rules scoped to your skin.
+   Skins are local CSS only. External resources and escaped CSS are rejected. */
+:root[data-skin="template"] {
+  color-scheme: light;
+  --paper: #f5f2e9;
+  --surface: #fffdf6;
+  --ink: #294b3d;
+  --line: #e2e5d8;
+  --green: #52775b;
+  --green-dark: #365d48;
+  --shadow: #dce0cf;
+  --settings-panel: #f3f5e9;
+  --settings-field: #fffef8;
+  --settings-edge: #d5dfc7;
+  --settings-muted: #728660;
+  --settings-active: #e4edda;
+}
+[data-skin="template"] .map-art {
+  filter: none;
+}

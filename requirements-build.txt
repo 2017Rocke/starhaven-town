@@ -1,0 +1,2 @@
+# No pip dependencies. Build with Python 3.9+, a relocatable Python runtime,
+# and Apple's Command Line Tools (Swift, codesign, iconutil, hdiutil).

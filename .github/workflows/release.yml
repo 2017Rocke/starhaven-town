@@ -1,0 +1,37 @@
+name: Build macOS installers
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        runner: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.5'
+      - run: uv python install 3.12
+      - name: Test and build
+        run: |
+          uv run --python 3.12 --no-project python -m unittest discover -s tests -v
+          runtime_root="$(uv run --python 3.12 --no-project python -c 'import sys; print(sys.base_prefix)')"
+          uv run --python 3.12 --no-project python scripts/build_macos.py --python-runtime "$runtime_root"
+          uv run --python 3.12 --no-project python scripts/export_source.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starhaven-${{ matrix.runner }}
+          path: dist/*
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            dist/*.dmg
+            dist/*.sha256
+          body: 'macOS 预览构建。下载对应芯片的安装镜像。此自动构建默认未完成 Apple Developer ID 签名公证；发布前请按 docs/RELEASING.md 验收。'
