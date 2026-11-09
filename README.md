@@ -4,6 +4,8 @@
 
 当前提供领航与星探两位居民、自定义居民、真实模型对话、任务板、成长册，以及「暖绿原野」「星夜营地」两套皮肤。应用和个人数据分开保存，方便后续更新功能与外观。
 
+[下载 macOS 安装包](https://github.com/2017Rocke/starhaven-town/releases/latest) · [查看源码](https://github.com/2017Rocke/starhaven-town) · [如何上传与发布新版](docs/GITHUB_USAGE.md)
+
 ## 下载与使用
 
 | 方式 | 适合谁 | 需要准备 |

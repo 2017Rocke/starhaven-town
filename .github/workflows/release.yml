@@ -1,10 +1,8 @@
 name: Build macOS installers
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
     strategy:
@@ -27,11 +25,3 @@ jobs:
         with:
           name: starhaven-${{ matrix.runner }}
           path: dist/*
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          draft: true
-          files: |
-            dist/*.dmg
-            dist/*.sha256
-          body: 'macOS 预览构建。下载对应芯片的安装镜像。此自动构建默认未完成 Apple Developer ID 签名公证；发布前请按 docs/RELEASING.md 验收。'

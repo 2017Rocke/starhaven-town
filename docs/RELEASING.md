@@ -35,7 +35,7 @@ python3 scripts/export_source.py
 
 将本目录作为独立仓库推送。提交前运行 `python3 scripts/export_source.py`；白名单只包含可公开源文件，并扫描明显个人路径与密钥，不把整个工作区直接压缩。
 
-`ci.yml` 运行测试；`release.yml` 按标签或手动触发构建两种 macOS 架构，标签推送创建草稿 Release。上传仓库后还需真实运行工作流；本机测试不能代替远端 CI 验收。
+`ci.yml` 在推送后运行测试；`release.yml` 通过 GitHub Actions 的 Run workflow 手动构建两种 macOS 架构，结果保存在该次运行的 Artifacts 中。维护者验收后再将安装包上传到 Release，构建流程不会覆盖已经发布的安装包。上传仓库后还需真实运行工作流；本机测试不能代替远端 CI 验收。日常操作见 [GitHub 上传与更新步骤](GITHUB_USAGE.md)。
 
 ## Apple 签名公证
 
