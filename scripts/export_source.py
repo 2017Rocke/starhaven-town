@@ -43,8 +43,8 @@ def main():
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as package:
         for path in sources:
             package.write(path, "starhaven-town/" + path.relative_to(ROOT).as_posix())
-    (output / (archive.name + ".sha256")).write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name + "\n")
-    (output / "source-files.txt").write_text("\n".join(str(p.relative_to(ROOT)) for p in sources) + "\n")
+    (output / (archive.name + ".sha256")).write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name + "\n", encoding="utf-8")
+    (output / "source-files.txt").write_text("\n".join(str(p.relative_to(ROOT)) for p in sources) + "\n", encoding="utf-8")
     print("Exported", len(sources), "public source files:", archive.name)
 
 

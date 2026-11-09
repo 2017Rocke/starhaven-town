@@ -62,27 +62,34 @@ def copy_runtime(src: Path, dest: Path):
         raise RuntimeError("Python runtime missing python.exe: " + str(src))
 
 
+def _site_packages(runtime: Path, python: Path) -> Path:
+    script = "import sysconfig; print(sysconfig.get_path('purelib'))"
+    out = subprocess.check_output([str(python), "-c", script], text=True).strip()
+    path = Path(out)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def install_webview(python: Path, runtime: Path):
-    # Install UI host into the bundled runtime only.
+    """Install WebView host into the bundled runtime without mutating uv's external marker."""
+    target = _site_packages(runtime, python)
+    # Use the build host interpreter's pip to drop wheels into the runtime site-packages.
+    host = Path(sys.executable)
     run(
-        python,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "pip",
-        "setuptools",
-        "wheel",
-    )
-    run(
-        python,
+        host,
         "-m",
         "pip",
         "install",
         "--disable-pip-version-check",
+        "--upgrade",
+        "--target",
+        str(target),
         "pywebview>=5.1",
         "pythonnet>=3.0.3",
         "clr_loader>=0.2.6",
+        "proxy_tools",
+        "bottle",
+        "typing_extensions",
     )
     # Smoke import inside the target interpreter.
     run(python, "-c", "import webview, sys; print('webview', getattr(webview, '__version__', 'unknown'), sys.version)")

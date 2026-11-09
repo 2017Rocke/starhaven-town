@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Local-only, standard-library server for 星栖小镇 (Python 3.9+)."""
 import argparse
+import sys
 import datetime as dt
-import fcntl
 import json
 import mimetypes
 import re
@@ -56,6 +56,24 @@ class APIError(Exception):
         self.message = message
 
 
+
+
+def _lock_instance(file_obj):
+    """Non-blocking exclusive lock for one data directory."""
+    if sys.platform == "win32":
+        import msvcrt
+        file_obj.seek(0)
+        file_obj.write("0")
+        file_obj.flush()
+        try:
+            msvcrt.locking(file_obj.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            raise BlockingIOError from exc
+    else:
+        import fcntl
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 class TownApp:
     def __init__(self, data_dir=None, bridge=None, source_dir=None, web_dir=None, report_root=None):
         self.data_dir = Path(data_dir or BASE_DIR / "data").resolve()
@@ -73,9 +91,9 @@ class TownApp:
             from provider_bridge import ProviderBridge
             bridge = ProviderBridge(workdir=self.data_dir / "runtime", data_dir=self.data_dir)
         self.bridge = bridge
-        self.instance_lock = (self.data_dir / "town.lock").open("a")
+        self.instance_lock = (self.data_dir / "town.lock").open("a+")
         try:
-            fcntl.flock(self.instance_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_instance(self.instance_lock)
         except BlockingIOError:
             self.instance_lock.close()
             raise RuntimeError("这个小镇的数据正在被另一个服务使用，请打开已运行的小镇。")

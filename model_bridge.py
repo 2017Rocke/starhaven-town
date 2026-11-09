@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+import sys
 import re
 import shutil
 import signal
@@ -119,15 +120,24 @@ class CodexBridge:
         if proc.poll() is not None:
             return
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            if sys.platform == "win32":
+                proc.terminate()
+            else:
+                os.killpg(proc.pid, signal.SIGTERM)
             proc.wait(timeout=2)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
+        except (ProcessLookupError, subprocess.TimeoutExpired, OSError):
             if proc.poll() is None:
                 try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    if sys.platform == "win32":
+                        proc.kill()
+                    else:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
                     pass
-                proc.wait(timeout=3)
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass
 
     @staticmethod
     def _friendly_error(stderr):
