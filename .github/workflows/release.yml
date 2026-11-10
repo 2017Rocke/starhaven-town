@@ -29,27 +29,60 @@ jobs:
           path: dist/*
 
   windows:
-    runs-on: windows-latest
+    # Server 2022 validates packaging. It is NOT a Windows 10 17763.379 test.
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.9.5'
-      - name: Test and build Windows x64 package
+      - name: Prepare Windows build tools and WebView2 (CI machine only)
         shell: pwsh
-        env:
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: utf-8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --version=6.4.3 --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          # The application itself never downloads or installs machine components.
+          $runtimeKeys = @(
+            'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7E726-8477-4F68-B92D-0D344C4EA749}',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F1E7E726-8477-4F68-B92D-0D344C4EA749}'
+          )
+          $installed = $false
+          foreach ($key in $runtimeKeys) {
+            $pv = (Get-ItemProperty $key -Name pv -ErrorAction SilentlyContinue).pv
+            if ($pv -and $pv -ne '0.0.0.0') { $installed = $true }
+          }
+          if (!$installed) {
+            $wv2 = Join-Path $env:TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $wv2
+            $signature = Get-AuthenticodeSignature $wv2
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+              throw 'Microsoft WebView2 installer signature check failed'
+            }
+            $install = Start-Process -FilePath $wv2 -ArgumentList '/silent','/install' -Wait -PassThru
+            if ($install.ExitCode -notin @(0, 3010)) { throw "WebView2 setup failed: $($install.ExitCode)" }
+          }
+      - name: Test and build Windows x64 installer and portable package
+        shell: pwsh
         run: |
           uv python install 3.12
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run --python 3.12 --no-project python -m unittest discover -s tests -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $runtime = uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Ensure host pip exists for --target installs into the runtime.
-          uv run --python 3.12 --no-project python -m pip --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime $runtime
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content VERSION -Raw).Trim()
+          $env:STARHAVEN_WINDOWS_APP = Join-Path $PWD "build/windows-x64/StarhavenTown-$version-windows-x64/StarhavenTown.exe"
+          $env:STARHAVEN_WINDOWS_INSTALLER = Join-Path $PWD "dist/StarhavenTown-$version-windows-x64-Setup.exe"
+          uv run --python 3.12 --no-project python tests/test_windows_integration.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run --python 3.12 --no-project python scripts/export_source.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -34,7 +34,7 @@
 [data-skin="starlight"] .page-heading>p:last-child { color:#b3c0ce; }
 [data-skin="starlight"] .season-tag { background:#27384b; border-color:#42546b; color:#ccd2b1; }
 [data-skin="starlight"] .town-scene { background:#30495a; border-color:#52667b; box-shadow:0 5px 0 #111d2e; }
-[data-skin="starlight"] .map-art { filter:brightness(.57) saturate(.62) hue-rotate(34deg); }
+[data-skin="starlight"] { --map-filter: brightness(.57) saturate(.62) hue-rotate(34deg); }
 [data-skin="starlight"] .town-scene:after { content:""; position:absolute; width:3px; height:3px; left:10%; top:14%; background:#e4d6aa; box-shadow:63px -15px #b3c5d5,139px 4px #e4d6aa,241px -19px #b3c5d5,327px 15px #e4d6aa,407px -10px #b3c5d5,455px 49px #c5d2df; opacity:.8; pointer-events:none; z-index:0; }
 [data-skin="starlight"] .map-caption,
 [data-skin="starlight"] .building-label,
@@ -150,3 +150,13 @@
 @media(max-width:560px) {
   [data-skin="starlight"] .rail { background:#202e42f5; border-color:#4b6176; }
 }
+
+/* New neighborhoods use the same night treatment as the village center. */
+[data-skin="starlight"] .map-home { background:#22384bed; border-color:#627383; color:#e2e5cf; box-shadow:2px 2px 0 #101b2b55; }
+[data-skin="starlight"] .map-home:hover,
+[data-skin="starlight"] .town-scene.panned .map-home { background:#526f72; border-color:#819c92; color:#ffedbc; }
+[data-skin="starlight"] .plot.selected .building-label { background:#526f72; border-color:#819c92; color:#ffedbc; }
+[data-skin="starlight"] .plot.selected .label-arrow { color:#e8dba7; }
+[data-skin="starlight"] .plot.selected .home-hit:before,
+[data-skin="starlight"] .plot.selected .home-hit:after { border-color:#d5c99b; }
+[data-skin="starlight"] .map-caption .pan-hint { color:#b5c5b8; }

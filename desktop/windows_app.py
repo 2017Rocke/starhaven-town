@@ -1,6 +1,6 @@
 """Windows desktop shell for Starhaven Town.
 
-Starts the private local backend and hosts the town UI in a native WebView2 window.
+Developer helpers for the private backend and compiled native WebView2 host.
 API keys are never written into the project tree; they stay in Windows Credential Manager.
 """
 from __future__ import annotations
@@ -59,27 +59,6 @@ def python_executable(root: Path, backend: Path) -> Path:
     raise FileNotFoundError("未找到内置 Python 运行时，请重新下载完整 Windows 安装包。")
 
 
-def acquire_single_instance():
-    if sys.platform != "win32":
-        return None
-    import ctypes
-    kernel = ctypes.windll.kernel32
-    handle = kernel.CreateMutexW(None, False, "Local\\StarhavenTownSingleInstance")
-    if not handle:
-        raise RuntimeError("无法创建单实例锁。")
-    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
-        kernel.CloseHandle(handle)
-        return False
-    return handle
-
-
-def release_single_instance(handle):
-    if not handle:
-        return
-    import ctypes
-    ctypes.windll.kernel32.CloseHandle(handle)
-
-
 def wait_ready(ready_file: Path, process: subprocess.Popen, timeout: float = 30.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -125,6 +104,8 @@ def start_backend(root: Path, data_dir: Path):
         [
             str(python),
             "-I",
+            "-X",
+            "utf8",
             "-B",
             str(backend / "desktop_runner.py"),
             "--data-dir",
@@ -172,78 +153,20 @@ def stop_backend(process: subprocess.Popen, ready_file: Path | None):
             pass
 
 
-def load_webview():
-    try:
-        import webview  # type: ignore
-        return webview
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "桌面窗口组件不可用。请使用官方 Windows 安装包，或安装 Microsoft Edge WebView2 运行时后重试。"
-        ) from exc
-
-
 def main() -> int:
+    """Developer convenience entry point; release shortcuts use the native EXE."""
     if sys.platform != "win32":
         print("此启动器仅用于 Windows。", file=sys.stderr)
         return 2
-
-    mutex = acquire_single_instance()
-    if mutex is False:
-        # Another instance owns the mutex; try to keep UX simple.
-        try:
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(None, "星栖小镇已经在运行。", APP_NAME, 0x40)
-        except Exception:
-            print("星栖小镇已经在运行。", file=sys.stderr)
-        return 0
-
     root = app_root()
-    data_dir = data_directory()
-    process = None
-    ready_file = None
-    try:
-        process, payload, ready_file = start_backend(root, data_dir)
-        url = "http://127.0.0.1:%s/" % payload["port"]
-        webview = load_webview()
-        window = webview.create_window(
-            APP_NAME,
-            url=url,
-            width=1280,
-            height=850,
-            min_size=(1000, 700),
-            confirm_close=False,
-            text_select=True,
-        )
-
-        def _watch():
-            while True:
-                if process.poll() is not None:
-                    try:
-                        window.destroy()
-                    except Exception:
-                        pass
-                    return
-                time.sleep(0.5)
-
-        threading.Thread(target=_watch, daemon=True).start()
-        webview.start(gui="edgechromium")
-        return 0
-    except Exception as exc:  # noqa: BLE001
-        append_log(data_dir, traceback.format_exc())
-        try:
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(
-                None,
-                "无法打开星栖小镇：\n%s\n\n详细日志：%%LOCALAPPDATA%%\\StarhavenTown\\logs\\desktop-windows.log" % exc,
-                APP_NAME,
-                0x10,
-            )
-        except Exception:
-            print(exc, file=sys.stderr)
-        return 1
-    finally:
-        stop_backend(process, ready_file) if process is not None else None
-        release_single_instance(mutex)
+    executable = root / "StarhavenTown.exe"
+    if not executable.is_file():
+        version = (root / "VERSION").read_text(encoding="utf-8").strip()
+        executable = root / "build" / "windows-x64" / ("StarhavenTown-" + version + "-windows-x64") / "StarhavenTown.exe"
+    if not executable.is_file():
+        print("请先运行 scripts/build_windows.py 构建原生窗口，或下载完整 Windows 安装包。", file=sys.stderr)
+        return 2
+    return subprocess.call([str(executable)])
 
 
 if __name__ == "__main__":

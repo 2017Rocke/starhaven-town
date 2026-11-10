@@ -16,6 +16,4 @@
   --settings-muted: #728660;
   --settings-active: #e4edda;
 }
-[data-skin="template"] .map-art {
-  filter: none;
-}
+[data-skin="template"] { --map-filter: none; }

@@ -4,7 +4,7 @@
 
 ## 桌面运行时
 
-macOS 安装包内置 CPython 可重定位运行时及其标准库。CPython 采用 Python Software Foundation License，并包含历史版本和部分模块的第三方声明。构建脚本保留运行时的 Python `LICENSE.txt` 和发行版提供的许可证文件；最终发布包应保留所选发行版要求的全部许可与版权声明。
+macOS 与 Windows 安装包内置 CPython 可重定位运行时及其标准库。CPython 采用 Python Software Foundation License，并包含历史版本和部分模块的第三方声明。构建脚本保留运行时的 Python `LICENSE.txt` 和发行版提供的许可证文件；最终发布包应保留所选发行版要求的全部许可与版权声明。
 
 可重定位运行时通常来自 **python-build-standalone**。该项目的构建工具许可与运行时中各组件的许可是不同事项；具体内容由实际选用的发行版决定，不能用一份工具许可证代替其全部依赖许可。
 
@@ -19,6 +19,14 @@ macOS 安装包内置 CPython 可重定位运行时及其标准库。CPython 采
 | 压缩、终端等运行时依赖 | 标准库底层能力 | 保留发行版中对应版本的版权与许可证 |
 
 维护者构建发行版时需记录运行时版本、来源与校验值，核对再分发声明是否完整。不要仅根据本文件推断任意 Python 发行版已完成许可核验。
+
+## Windows 桌面组件
+
+- **Microsoft.Web.WebView2 SDK 1.0.3537.50**：从 Microsoft 官方 NuGet 包获取（SHA-256 `5ea526bbd728adda0da4d31219267e96460494a427e4894c4e09d9f320f4b9aa`）。安装包分发其 `net462` 目录下的 Core / WinForms 程序集和 x64 `WebView2Loader.dll`，保留原包 `LICENSE.txt` 为 `LICENSE-WebView2.txt`。这些组件遵循 Microsoft 随包许可，不能以本项目 MIT 许可替代。
+- **WebView2 Evergreen Runtime**：浏览器引擎不打包进本应用，由用户按 Microsoft 的许可单独安装及更新。缺失时只提供 Microsoft 官方下载入口。
+- **.NET Framework 4.7.2+、Windows Forms、Windows Credential Manager、Universal CRT**：使用 Windows 提供的系统组件，没有将操作系统组件副本加入项目。
+- **Visual C++ 运行库**：Python 发行版随附的 app-local VC DLL 按其原有再分发条款保留，构建必须保留该 Python 发行版附带的全部许可声明。
+- **Inno Setup 6**：用于生成安装/卸载程序，采用其 [官方许可证](https://jrsoftware.org/files/is/license.txt)。它是构建工具；不作为 Python 依赖或常驻运行服务安装到用户电脑。
 
 ## 系统框架与可选服务
 

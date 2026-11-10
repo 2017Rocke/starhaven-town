@@ -8,7 +8,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {"VERSION", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", ".gitignore", "requirements-build.txt", "server.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "desktop_runner.py", "打开星栖小镇.command", "使用说明.md"}
 DIRECTORIES = {"web", "desktop", "scripts", "tests", "docs", ".github"}
-SUFFIXES = {".py", ".swift", ".md", ".json", ".html", ".css", ".js", ".svg", ".yml", ".yaml", ".png"}
+SUFFIXES = {".py", ".swift", ".cs", ".manifest", ".iss", ".ps1", ".md", ".json", ".html", ".css", ".js", ".svg", ".yml", ".yaml", ".png"}
 
 
 def public_files():

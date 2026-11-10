@@ -321,6 +321,10 @@
       button.tabIndex = selected ? 0 : -1;
     });
     $$(".view").forEach(section => { section.hidden = section.id !== `view-${name}`; });
+    if (name === "town" && typeof mapView !== "undefined") {
+      // 若地图曾在隐藏状态渲染（视口宽度为 0），切回小镇时补一次定位；已定位过则保留浏览位置
+      applyMapTransform();
+    }
     history.replaceState(null, "", `#${name}`);
     if (window.innerWidth <= 800) $(".main-content").scrollIntoView({ behavior: reducedMotion() ? "instant" : "smooth" });
   }
@@ -390,16 +394,27 @@
 
   function renderResidents() {
     const list = $("#resident-list");
-    list.replaceChildren();
-    for (const agent of ui.state.agents) {
-      const button = el("button", `resident-chip${agent.id === ui.selected ? " selected" : ""}`);
-      button.type = "button";
-      button.setAttribute("aria-pressed", String(agent.id === ui.selected));
-      button.setAttribute("aria-label", `与${agent.name}对话`);
-      button.append(avatar(agent), el("span", "", agent.name));
-      button.addEventListener("click", () => selectAgent(agent.id));
-      list.append(button);
+    const signature = JSON.stringify(ui.state.agents.map(({ id, name, avatar }) => [id, name, avatar]));
+    if (ui.residentsSignature !== signature) {
+      const focused = document.activeElement?.dataset.resident;
+      list.replaceChildren();
+      for (const agent of ui.state.agents) {
+        const button = el("button", "resident-chip");
+        button.type = "button";
+        button.dataset.resident = agent.id;
+        button.setAttribute("aria-label", `与${agent.name}对话，找到住处`);
+        button.append(avatar(agent), el("span", "", agent.name));
+        button.addEventListener("click", () => { selectAgent(agent.id); if (ui.view === "town") revealResident(agent.id); });
+        list.append(button);
+        if (focused === agent.id) button.focus({ preventScroll: true });
+      }
+      ui.residentsSignature = signature;
     }
+    $$("[data-resident]", list).forEach(button => {
+      const selected = button.dataset.resident === ui.selected;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    });
   }
 
   function renderProfile() {
@@ -423,36 +438,503 @@
     renderSuggestions();
   }
 
-  function updateMap() {
-    $$(".extra-resident").forEach(node => node.remove());
-    for (const button of $$("[data-agent]")) {
-      const agent = ui.state.agents.find(item => item.id === button.dataset.agent);
-      button.hidden = !agent;
-      button.classList.toggle("selected", button.dataset.agent === ui.selected);
-      button.setAttribute("aria-pressed", String(button.dataset.agent === ui.selected));
-      if (agent && button.classList.contains("map-resident")) {
-        const oldImage = $("img", button);
-        if (oldImage) oldImage.replaceWith(avatar(agent));
-        $(".map-name", button).textContent = agent.name;
-        button.setAttribute("aria-label", `与${agent.name}对话`);
+  function buildingLabel(agent) {
+    const label = el("span", "building-label");
+    const dot = el("span", "tiny-dot");
+    dot.style.background = agent.house?.palette?.accent || "#8a9a72";
+    label.append(dot, el("span", "", agent.house?.name || agent.home || "小屋"), el("span", "label-arrow", "↗"));
+    return label;
+  }
+
+  function residentSprite(agent) {
+    const button = el("button", `map-resident${agent.id === ui.selected ? " selected" : ""}`);
+    button.type = "button";
+    button.dataset.agent = agent.id;
+    button.setAttribute("aria-label", `与${agent.name}对话`);
+    button.setAttribute("aria-pressed", String(agent.id === ui.selected));
+    button.append(el("span", "resident-bubble", "在这里，随时可以聊聊"), avatar(agent), el("span", "map-name", agent.name));
+    button.addEventListener("click", () => selectAgent(agent.id, true));
+    return button;
+  }
+
+  // Scenery shares the original town's small pixel steps and muted material palette.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgNode(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, String(value)));
+    return node;
+  }
+  const pixelRect = (x, y, width, height, fill) => svgNode("rect", { x, y, width, height, fill });
+  const pixelPath = (d, fill) => svgNode("path", { d, fill });
+  function shade(hex, amount) {
+    const color = /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#bba781";
+    const target = amount < 0 ? [70, 82, 60] : [244, 240, 224];
+    return "#" + [1, 3, 5].map((start, index) => {
+      const value = parseInt(color.slice(start, start + 2), 16);
+      return Math.round(value + (target[index] - value) * Math.abs(amount)).toString(16).padStart(2, "0");
+    }).join("");
+  }
+  function pixelTree(x, y, kind = 0, fruit = false) {
+    const tree = svgNode("g", { transform: `translate(${x} ${y})` });
+    const palette = kind % 3 === 1 ? ["#708952", "#8fa66a", "#a4b67c", "#c1cf92"] : kind % 3 === 2 ? ["#82955b", "#a2b277", "#bcc58c", "#d4d79e"] : ["#6d8b59", "#88a46c", "#a0b77d", "#b7c98d"];
+    tree.append(pixelRect(-26, 49, 58, 8, "#8ea66b38"), pixelRect(-4, 10, 12, 43, "#927c54"),
+      pixelRect(4, 17, 5, 34, "#7b6c49"), pixelRect(-10, 32, 8, 7, "#927c54"), pixelRect(8, 25, 8, 6, "#7b6c49"),
+      pixelPath("M-30 5h-8v-22h8v-16h14v-11h28v6h15v12h10v29h-8v15H10v7h-24V17h-16Z", palette[0]),
+      pixelPath("M-31-17h8v-14h14v-8h20v7h15v12h6V3H18v11H-5V8h-19V0h-7Z", palette[1]),
+      pixelPath("M-23-20h8v-11h23v6h14v11H12v9H-8v-6h-15Z", palette[2]),
+      pixelRect(-10, -31, 10, 5, palette[3]), pixelRect(2, -26, 7, 5, palette[3]),
+      pixelRect(-29, -12, 5, 7, palette[2]), pixelRect(19, -4, 6, 8, palette[2]), pixelRect(-11, 8, 7, 4, palette[2]));
+    if (fruit) [[-18, -12], [8, -18], [18, 2], [-5, 4]].forEach(([fx, fy], index) => {
+      tree.append(pixelRect(fx, fy, 6, 7, index % 2 ? "#d6ac72" : "#c99170"), pixelRect(fx, fy, 3, 3, "#e8c18a"), pixelRect(fx + 2, fy - 2, 2, 2, "#718951"));
+    });
+    return tree;
+  }
+  function pixelFlower(x, y, color = "#d9ad7f") {
+    const flower = svgNode("g", { transform: `translate(${x} ${y})` });
+    flower.append(pixelRect(2, 6, 2, 8, "#90a574"), pixelRect(-1, 10, 3, 3, "#a1b77d"),
+      pixelRect(0, 2, 6, 6, color), pixelRect(2, 0, 2, 10, color), pixelRect(2, 4, 2, 2, "#f3df9a"));
+    return flower;
+  }
+  function pixelShrub(x, y) {
+    const shrub = svgNode("g", { transform: `translate(${x} ${y})` });
+    shrub.append(pixelPath("M0 12h5V5h8V0h18v5h9v7h5v13h-7v5H7v-5H0Z", "#78935a"),
+      pixelPath("M5 10h8V4h15v6h9v10H24v5H9v-5H5Z", "#97ae70"),
+      pixelRect(13, 6, 10, 5, "#b2c285"), pixelRect(30, 15, 5, 4, "#a8bd7d"));
+    return shrub;
+  }
+  function pixelFence(x, y, length, gap = false) {
+    const fence = svgNode("g", { transform: `translate(${x} ${y})` });
+    const segments = gap ? [[0, length / 2 - 22], [length / 2 + 22, length / 2 - 22]] : [[0, length]];
+    for (const [start, width] of segments) {
+      fence.append(pixelRect(start, 9, width, 4, "#b09b74"), pixelRect(start, 9, width, 2, "#d0bd91"), pixelRect(start, 20, width, 4, "#aa946d"));
+      for (let px = start; px <= start + width - 6; px += 24) {
+        fence.append(pixelRect(px, 4, 6, 25, "#ab916b"), pixelRect(px, 4, 3, 23, "#d1bc8e"), pixelRect(px + 1, 2, 4, 3, "#d9c79d"));
       }
     }
-    const extra = ui.state.agents.filter(agent => !["linghang", "scout"].includes(agent.id));
-    const shown = extra.slice(0, 5);
-    const selected = extra.find(agent => agent.id === ui.selected);
-    if (selected && !shown.includes(selected)) shown[shown.length - 1] = selected;
-    const positions = [[27, 67], [72, 65], [56, 62], [19, 56], [59, 77]];
-    shown.forEach((agent, index) => {
-      const button = el("button", `map-resident extra-resident${agent.id === ui.selected ? " selected" : ""}`);
-      button.dataset.agent = agent.id;
-      button.setAttribute("aria-label", `与${agent.name}对话`);
-      button.setAttribute("aria-pressed", String(agent.id === ui.selected));
-      button.style.left = `${positions[index][0]}%`;
-      button.style.top = `${positions[index][1]}%`;
-      button.append(el("span", "resident-bubble", "在这里，随时可以聊聊"), avatar(agent), el("span", "map-name", agent.name));
-      button.addEventListener("click", () => selectAgent(agent.id, true));
-      $(".town-scene").append(button);
+    return fence;
+  }
+
+  function plotSvg(agent, map) {
+    const svg = svgNode("svg", { class: "plot-svg", viewBox: "0 0 320 240", width: 320, height: 240, "shape-rendering": "crispEdges", "aria-hidden": "true" });
+    const variant = (agent.house?.variant || 0) % 4;
+    // Open lawns blend into the meadow; only the small garden has a fence.
+    svg.append(pixelPath("M20 24h68V12h134v8h62v20h20v150h-14v25h-62v11H78v-9H28v-21H12V58h8Z", "#d2e1b1"),
+      pixelPath("M34 42h76V28h101v12h67v132h-22v35H92v-13H34Z", "#d9e6bd"));
+    const rand = mulberry32(81 + variant);
+    for (let i = 0; i < 46; i++) {
+      const x = 16 + Math.floor(rand() * 94) * 3, y = 21 + Math.floor(rand() * 66) * 3;
+      svg.append(pixelRect(x, y, 3, 3, i % 4 ? "#c3d69f" : "#e3ebca"));
+    }
+    const topEntry = agent.plot.pos[1] > map.core[1] + map.core[3];
+    if (topEntry) svg.append(pixelRect(150, 0, 20, 34, "#dfd1a9"));
+    svg.append(pixelPath("M148 182h24v24h8v34h-38v-24h6Z", "#d8c99e"), pixelRect(151, 199, 15, 3, "#e5dcbe"), pixelRect(146, 225, 8, 3, "#c8b98e"));
+    svg.append(pixelTree(variant % 2 ? 278 : 38, 64, variant));
+    const house = houseArtGroup(agent);
+    house.setAttribute("transform", "translate(40 18)");
+    svg.append(house, pixelFence(24, 205, 102), pixelFence(202, 205, 94));
+    svg.append(pixelShrub(variant % 2 ? 25 : 254, 170));
+    for (let i = 0; i < 6; i++) svg.append(pixelFlower(28 + i * 13, 190 + (i % 2) * 5, ["#ddaf8a", "#dcc38a", "#b8adc0"][i % 3]));
+    // Mailbox, stepping stones and a little crate make the lot feel inhabited.
+    svg.append(pixelRect(220, 189, 4, 20, "#a18b64"), pixelRect(214, 180, 16, 12, "#b79973"), pixelRect(214, 180, 16, 3, "#d4bd92"), pixelRect(218, 185, 8, 2, "#827555"));
+    return svg;
+  }
+
+  function houseArtGroup(agent) {
+    const house = svgNode("g");
+    const source = agent.house?.palette || {};
+    const getColor = (key, fallback) => /^#[0-9a-f]{6}$/i.test(source[key] || "") ? source[key] : fallback;
+    const wall = getColor("wall", "#e5dcbe"), roof = getColor("roof", "#bb8964"), trim = getColor("trim", "#9e6b4e");
+    const accent = shade(getColor("accent", "#b49170"), .2);
+    const variant = (agent.house?.variant || 0) % 4;
+    const style = agent.house?.style || "cottage";
+    const put = (...nodes) => house.append(...nodes);
+    const block = (x, y, w, h, color = wall) => {
+      put(pixelRect(x, y, w, h, color), pixelRect(x + w - 12, y, 12, h, shade(color, -.18)),
+        pixelRect(x, y, w, 5, shade(color, -.17)), pixelRect(x + 4, y + 7, w - 20, 3, shade(color, .21)),
+        pixelRect(x - 4, y + h - 7, w + 8, 8, "#bba985"), pixelRect(x - 4, y + h, w + 8, 4, "#a89b76"));
+      for (let row = y + 20; row < y + h - 8; row += 13) {
+        put(pixelRect(x + 4, row, w - 20, 2, shade(color, -.12)));
+        for (let col = x + 12 + ((row - y) % 2) * 18; col < x + w - 20; col += 34) put(pixelRect(col, row - 10, 2, 9, shade(color, -.08)));
+      }
+      put(pixelRect(x + 4, y + 5, 5, h - 12, shade(trim, .2)), pixelRect(x + w - 19, y + 5, 5, h - 12, trim));
+    };
+    // Eight-pixel roof steps are explicit geometry, including the school bell roof.
+    const roofAt = (x, y, width, rows, color = roof) => {
+      for (let row = 0; row < rows; row++) {
+        const inset = (rows - row - 1) * 8;
+        const rx = x + inset, ry = y + row * 8, rw = width - inset * 2;
+        if (rw < 8) continue;
+        put(pixelRect(rx, ry, rw, 8, shade(color, row % 2 ? -.04 : .07)), pixelRect(rx, ry, rw, 2, shade(color, .22)));
+        for (let tile = rx + 7 + (row % 2) * 9; tile < rx + rw - 3; tile += 18) put(pixelRect(tile, ry + 2, 2, 6, shade(color, -.16)));
+        put(pixelRect(rx + rw - 6, ry + 2, 6, 6, shade(color, -.2)));
+      }
+      put(pixelRect(x - 4, y + rows * 8, width + 8, 5, shade(color, -.25)), pixelRect(x, y + rows * 8 + 5, width, 4, shade(trim, -.2)));
+    };
+    const windowAt = (x, y, width = 25, height = 29) => {
+      put(pixelRect(x - 3, y - 3, width + 6, height + 6, trim), pixelRect(x, y, width, height, "#b7c9c1"),
+        pixelRect(x + 3, y + 3, width - 6, height - 6, "#e6e7c9"), pixelRect(x + 3, y + 3, width - 6, 7, "#f2edcf"),
+        pixelRect(x + Math.floor(width / 2) - 1, y, 3, height, shade(trim, .25)), pixelRect(x, y + Math.floor(height / 2), width, 3, shade(trim, .25)),
+        pixelRect(x - 5, y + height + 3, width + 10, 4, shade(trim, -.08)), pixelRect(x - 5, y + height + 3, width + 10, 2, shade(trim, .3)));
+    };
+    const doorAt = (x, y, width = 31, height = 45) => {
+      put(pixelRect(x - 3, y - 3, width + 6, height + 3, trim), pixelRect(x, y, width, height, shade(trim, -.24)),
+        pixelRect(x + 3, y + 3, width - 6, height - 3, shade(trim, .1)));
+      for (let dx = 9; dx < width - 2; dx += 8) put(pixelRect(x + dx, y + 3, 2, height - 3, shade(trim, -.18)));
+      put(pixelRect(x + 7, y + 6, width - 14, 10, "#d8d5b6"), pixelRect(x + width - 7, y + 29, 3, 3, "#e1c58b"),
+        pixelRect(x - 6, y + height, width + 12, 5, "#d5c8a4"), pixelRect(x - 10, y + height + 5, width + 20, 5, "#b8ab86"));
+    };
+    const sign = (x, y, kind) => {
+      put(pixelRect(x + 18, y + 25, 4, 13, trim), pixelRect(x, y, 42, 28, shade(trim, -.04)), pixelRect(x + 3, y + 3, 36, 22, "#eee0bd"), pixelRect(x + 3, y + 24, 36, 3, shade(trim, .3)));
+      if (kind === "music") put(pixelRect(x + 23, y + 7, 3, 11, trim), pixelRect(x + 14, y + 16, 12, 6, trim), pixelRect(x + 23, y + 6, 9, 4, accent));
+      else if (kind === "finance") [7, 12, 17].forEach((h, i) => put(pixelRect(x + 9 + i * 9, y + 23 - h, 5, h, "#8a9e70")));
+      else if (kind === "school") put(pixelRect(x + 8, y + 8, 11, 13, "#b8bc91"), pixelRect(x + 22, y + 8, 11, 13, "#c9c9a2"), pixelRect(x + 19, y + 7, 3, 16, trim));
+      else if (kind === "workshop") put(pixelRect(x + 10, y + 7, 8, 6, trim), pixelRect(x + 18, y + 11, 4, 11, trim), pixelRect(x + 22, y + 7, 10, 6, trim));
+      else put(pixelRect(x + 9, y + 8, 24, 3, accent), pixelRect(x + 9, y + 14, 16, 3, accent), pixelRect(x + 9, y + 20, 20, 2, accent));
+    };
+    put(pixelPath("M30 172h174v5h15v8H25v-7h5Z", "#7f965b33"));
+    if (["workshop", "cottage", "music"].includes(style)) {
+      put(pixelRect(178, 36, 19, 53, "#b39373"), pixelRect(190, 36, 7, 53, "#967f62"), pixelRect(174, 31, 27, 7, "#c0a283"));
+      for (let y = 43; y < 83; y += 10) put(pixelRect(180, y, 15, 2, "#d2b293"));
+      put(pixelRect(182, 19, 8, 6, "#ecebd9"), pixelRect(188 + variant * 2, 7, 11, 7, "#e7e8d5"));
+    }
+    if (style === "architecture" || style === "command") {
+      block(142, 43, 62, 128, shade(wall, .08));
+      roofAt(134, 14, 78, 3, shade(roof, -.08));
+      windowAt(157, 57, 23, 26);
+      windowAt(157, 106, 23, 25);
+      if (style === "command") put(pixelRect(173, 0, 3, 25, trim), pixelPath("M176 0h23v5h-5v5h-18Z", accent));
+      block(28, 105, 122, 66);
+      roofAt(16, 56, 144, 6);
+      windowAt(43, 119, 23, 26); doorAt(91, 126);
+    } else if (style === "observatory") {
+      block(35, 105, 174, 66);
+      block(83, 58, 77, 54, shade(wall, .05));
+      roofAt(73, 17, 97, 5, shade(roof, .04));
+      windowAt(106, 65, 25, 28);
+      roofAt(26, 89, 192, 2);
+      windowAt(49, 121, 25, 26); windowAt(169, 121, 25, 26); doorAt(106, 126);
+      put(pixelRect(194, 45, 5, 37, trim), pixelRect(187, 76, 20, 4, trim), pixelPath("M183 45v-6h8v-6h24v6h-8v6Z", "#839c91"), pixelRect(210, 30, 10, 10, "#b6c9b8"));
+    } else if (style === "farm") {
+      block(24, 102, 136, 69); roofAt(12, 45, 160, 7);
+      doorAt(76, 123, 39, 48); windowAt(39, 118, 22, 25);
+      block(174, 130, 46, 41, shade(wall, .09)); roofAt(166, 105, 62, 3);
+      put(pixelRect(191, 149, 15, 22, shade(trim, -.2)), pixelRect(184, 164, 8, 7, "#e8dfc1"), pixelRect(180, 161, 6, 6, "#efe9d4"), pixelRect(179, 158, 4, 3, "#be8a6a"), pixelRect(178, 165, 3, 2, "#c9a24e"), pixelRect(185, 171, 2, 5, trim));
+    } else {
+      block(28, 103, 184, 68); roofAt(16, 38, 208, 8);
+      windowAt(44, 118); windowAt(171, 118); doorAt(106, 126);
+      // A dormer is built from the same roof tiles instead of a floating icon.
+      if (["cottage", "school", "music"].includes(style)) {
+        block(100, 60, 42, 32, shade(wall, .1)); roofAt(94, 35, 54, 3); windowAt(111, 65, 17, 17);
+      }
+      if (style === "finance") {
+        put(pixelRect(36, 109, 5, 62, trim), pixelRect(199, 109, 5, 62, trim), pixelRect(35, 160, 8, 11, "#bba985"), pixelRect(198, 160, 8, 11, "#bba985"));
+      }
+    }
+    if (["school", "music", "finance", "workshop"].includes(style)) sign(variant % 2 ? 3 : 183, 151, style);
+    else if (style !== "farm") {
+      put(pixelRect(44, 153, 34, 8, trim), pixelRect(44, 153, 34, 3, shade(trim, .3)));
+      [45, 57, 69].forEach((x, i) => put(pixelFlower(x, 142, ["#ddaf8a", "#dcc38a", "#b8adc0"][i])));
+    }
+    return house;
+  }
+
+  function renderPlot(agent, map) {
+    if (!map || !agent.plot?.pos) return null;
+    if (agent.house?.painted) {
+      // 村心老建筑：命中区直接盖在老地图的建筑物上。
+      const group = el("div", `plot painted${agent.id === ui.selected ? " selected" : ""}`);
+      const r = agent.house.rect || {};
+      const rectX = map.core[0] + (r.x || 0) * map.core[2];
+      const rectY = map.core[1] + (r.y || 0) * map.core[3];
+      const rectW = (r.w || 0.2) * map.core[2];
+      const rectH = (r.h || 0.3) * map.core[3];
+      const hit = el("button", "home-hit painted-hit");
+      hit.type = "button";
+      hit.dataset.agent = agent.id;
+      hit.setAttribute("aria-label", `进入${agent.house.name || agent.home}，与${agent.name}对话`);
+      hit.style.left = `${rectX}px`; hit.style.top = `${rectY}px`;
+      hit.style.width = `${rectW}px`; hit.style.height = `${rectH}px`;
+      hit.append(buildingLabel(agent));
+      hit.addEventListener("click", () => selectAgent(agent.id, true));
+      group.append(hit);
+      const sprite = residentSprite(agent);
+      sprite.style.left = `${agent.plot.pos[0]}px`;
+      sprite.style.top = `${agent.plot.pos[1] + rectH * 0.3}px`;
+      group.append(sprite);
+      return group;
+    }
+    const plot = el("div", `plot${agent.id === ui.selected ? " selected" : ""}`);
+    plot.style.left = `${agent.plot.pos[0]}px`;
+    plot.style.top = `${agent.plot.pos[1]}px`;
+    plot.style.width = `${map.plot[0]}px`;
+    plot.style.height = `${map.plot[1]}px`;
+    plot.append(plotSvg(agent, map));
+    const hit = el("button", "home-hit");
+    hit.type = "button";
+    hit.dataset.agent = agent.id;
+    hit.setAttribute("aria-label", `进入${agent.house.name || agent.home}，与${agent.name}对话`);
+    hit.append(buildingLabel(agent));
+    hit.addEventListener("click", () => selectAgent(agent.id, true));
+    plot.append(hit);
+    plot.append(residentSprite(agent));
+    return plot;
+  }
+
+  const mapView = { x: 0, y: 0, scale: 1, ready: false, drag: null, frame: null, layout: null, background: null, plots: new Map(), canvasWidth: 0, canvasHeight: 0 };
+
+  function applyMapTransform() {
+    const scene = $("#town-scene"), world = $("#map-world"), map = ui.state?.map;
+    if (!scene || !world || !map || !scene.clientWidth || !scene.clientHeight) return;
+    const width = scene.clientWidth, height = scene.clientHeight;
+    // One scale for both axes keeps tree crowns, characters and pixels square.
+    const scale = Math.min(width / map.core[2], height / map.core[3]);
+    if (!mapView.ready) {
+      mapView.x = width / 2 - (map.core[0] + map.core[2] / 2) * scale;
+      mapView.y = height / 2 - (map.core[1] + map.core[3] / 2) * scale;
+      mapView.ready = true;
+    } else if (width !== mapView.canvasWidth || height !== mapView.canvasHeight) {
+      const centerX = (mapView.canvasWidth / 2 - mapView.x) / mapView.scale;
+      const centerY = (mapView.canvasHeight / 2 - mapView.y) / mapView.scale;
+      mapView.x = width / 2 - centerX * scale;
+      mapView.y = height / 2 - centerY * scale;
+    }
+    mapView.scale = scale; mapView.canvasWidth = width; mapView.canvasHeight = height;
+    mapView.x = Math.round(Math.min(0, Math.max(width - map.world[0] * scale, mapView.x)));
+    mapView.y = Math.round(Math.min(0, Math.max(height - map.world[1] * scale, mapView.y)));
+    world.style.transform = `translate(${mapView.x}px, ${mapView.y}px) scale(${scale})`;
+    world.style.setProperty("--map-ui-scale", String(Math.max(1, 1 / scale)));
+    const homeX = width / 2 - (map.core[0] + map.core[2] / 2) * scale;
+    const homeY = height / 2 - (map.core[1] + map.core[3] / 2) * scale;
+    scene.classList.toggle("panned", Math.abs(mapView.x - homeX) > 45 || Math.abs(mapView.y - homeY) > 45);
+  }
+
+  function scheduleMapTransform() {
+    if (mapView.frame !== null) return;
+    mapView.frame = requestAnimationFrame(() => { mapView.frame = null; applyMapTransform(); });
+  }
+
+  function returnToVillage() {
+    mapView.ready = false;
+    applyMapTransform();
+  }
+
+  function revealResident(id) {
+    const agent = ui.state?.agents.find(item => item.id === id), scene = $("#town-scene"), map = ui.state?.map;
+    if (!agent?.plot?.pos || !map || !scene.clientWidth) return;
+    const [x, y] = agent.plot.pos;
+    const center = agent.house?.painted ? [x, y] : [x + map.plot[0] / 2, y + map.plot[1] / 2];
+    mapView.x = scene.clientWidth / 2 - center[0] * mapView.scale;
+    mapView.y = scene.clientHeight / 2 - center[1] * mapView.scale;
+    mapView.ready = true;
+    applyMapTransform();
+  }
+
+  function initMapPan() {
+    const scene = $("#town-scene");
+    if (!scene || scene.dataset.panReady) return;
+    scene.dataset.panReady = "1";
+    window.addEventListener("keydown", event => { if (event.key === "Tab") mapView.keyboardNavigation = true; }, true);
+    scene.addEventListener("pointerdown", () => { mapView.keyboardNavigation = false; }, true);
+    $("#map-home").addEventListener("click", returnToVillage);
+    scene.addEventListener("dragstart", event => event.preventDefault());
+    scene.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !event.isPrimary || event.target.closest("[data-map-control]")) return;
+      mapView.drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, baseX: mapView.x, baseY: mapView.y, moved: false };
     });
+    window.addEventListener("pointermove", event => {
+      const drag = mapView.drag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 7) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        scene.classList.add("grabbing");
+        // Capture only after a drag begins; a simple click keeps its real button target.
+        try { scene.setPointerCapture(event.pointerId); } catch { /* Window events still follow the pointer. */ }
+      }
+      mapView.x = drag.baseX + dx; mapView.y = drag.baseY + dy;
+      scheduleMapTransform();
+    });
+    const endDrag = event => {
+      const drag = mapView.drag;
+      if (!drag || (event.pointerId !== undefined && drag.pointerId !== event.pointerId)) return;
+      mapView.drag = null;
+      scene.classList.remove("grabbing");
+      if (drag.moved) {
+        ui.suppressClickUntil = Date.now() + 300;
+        applyMapTransform();
+      }
+      try { if (scene.hasPointerCapture(drag.pointerId)) scene.releasePointerCapture(drag.pointerId); } catch { /* Already released. */ }
+    };
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+    window.addEventListener("blur", endDrag);
+    scene.addEventListener("lostpointercapture", endDrag);
+    scene.addEventListener("click", event => {
+      if (event.detail !== 0 && Date.now() < (ui.suppressClickUntil || 0)) {
+        event.stopPropagation(); event.preventDefault();
+      }
+    }, true);
+    scene.addEventListener("keydown", event => {
+      if (event.key === "Escape") { endDrag(event); return; }
+      if (event.target !== scene || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key === "Home") { event.preventDefault(); returnToVillage(); return; }
+      const directions = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+      if (!directions[event.key]) return;
+      event.preventDefault();
+      const [dx, dy] = directions[event.key], distance = event.shiftKey ? 180 : 72;
+      mapView.x += dx * distance; mapView.y += dy * distance;
+      applyMapTransform();
+    });
+    scene.addEventListener("focusin", event => {
+      const button = event.target.closest("[data-agent]");
+      if (!button || !mapView.keyboardNavigation) return;
+      scene.scrollLeft = 0; scene.scrollTop = 0;
+      const viewport = scene.getBoundingClientRect(), box = button.getBoundingClientRect();
+      if (box.left < viewport.left + 12 || box.right > viewport.right - 12 || box.top < viewport.top + 44 || box.bottom > viewport.bottom - 48) revealResident(button.dataset.agent);
+    });
+    if (typeof ResizeObserver === "function") new ResizeObserver(scheduleMapTransform).observe(scene);
+    else window.addEventListener("resize", scheduleMapTransform);
+  }
+
+  function mulberry32(seed) {
+    let a = seed;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function meadowPlot(index, x, y) {
+    const patch = svgNode("g", { transform: `translate(${x} ${y})` });
+    const put = (...items) => patch.append(...items);
+    const colors = ["#ddaf8a", "#dcc38a", "#d6ae8c", "#b8adc0"];
+    const rand = mulberry32(index * 17 + 61);
+    const kind = index % 5;
+    if (kind === 0) {
+      // Orchard: the exact same layered crowns as the original village trees.
+      put(pixelPath("M34 76h50V54h143v17h46v95h-18v24H63v-14H34Z", "#cedfae"));
+      [[69, 68], [178, 82], [253, 57], [109, 150]].forEach(([tx, ty], i) => put(pixelTree(tx, ty, i, true)));
+      put(pixelFence(198, 174, 91), pixelRect(215, 199, 24, 17, "#b79d73"), pixelRect(215, 202, 24, 3, "#d4bd8e"), pixelRect(218, 196, 6, 5, "#c7926e"), pixelRect(229, 196, 6, 5, "#d4a972"));
+    } else if (kind === 1) {
+      // Individual seedlings and broken soil edges, never flat green stripes.
+      put(pixelPath("M47 48h210v9h12v124h-14v11H55v-9H40V65h7Z", "#d8c6a0"));
+      for (let row = 0; row < 4; row++) {
+        const yy = 63 + row * 30, xx = 52 + row % 2 * 5;
+        put(pixelRect(xx, yy, 202, 20, "#b99f78"), pixelRect(xx + 3, yy, 194, 3, "#cbb18a"), pixelRect(xx + 6, yy + 18, 187, 2, "#ad936e"));
+        for (let col = 0; col < 8; col++) {
+          const px = xx + 10 + col * 24;
+          put(pixelRect(px, yy + 12, 9, 3, "#a48e66"), pixelRect(px + 3, yy + 5, 3, 10, "#7b975f"),
+            pixelRect(px - 2, yy + 2, 6, 6, "#99b178"), pixelRect(px + 5, yy, 6, 6, "#8faa6d"), pixelRect(px - 1, yy + 2, 3, 2, "#b8c98f"));
+          if (row % 2) put(pixelRect(px + 4, yy + 12, 3, 4, "#cba46e"));
+        }
+      }
+      put(pixelFence(38, 31, 241), pixelRect(278, 144, 3, 44, "#9a8965"), pixelRect(273, 143, 13, 6, "#b4b6a0"), pixelRect(274, 137, 2, 7, "#9fa68e"), pixelRect(280, 137, 2, 7, "#9fa68e"));
+    } else if (kind === 2) {
+      put(pixelPath("M52 66h84V43h89v16h31v82h-21v45h-78v-13H58v-29H40V88h12Z", "#cedfae"));
+      for (let i = 0; i < 44; i++) {
+        const fx = 50 + Math.floor(rand() * 192), fy = 54 + Math.floor(rand() * 121);
+        put(pixelFlower(fx, fy, colors[i % colors.length]));
+      }
+      put(pixelTree(267, 152, 1), pixelFence(38, 196, 151));
+    } else if (kind === 3) {
+      // Four stepped shorelines share the original river's water and bank colors.
+      put(pixelPath("M73 53h45V42h68v11h45v14h25v22h13v57h-12v21h-28v14h-70v11h-49v-13H78v-15H57v-25H45V96h13V72h15Z", "#b3c397"),
+        pixelPath("M78 62h45V51h58v11h44v14h23v20h12v43h-12v22h-26v12h-65v10h-42v-12H84v-15H64v-23H54v-30h13V80h11Z", "#d2d7b4"),
+        pixelPath("M83 70h45V59h48v11h44v13h20v20h12v30h-12v23h-24v9h-62v10h-34v-12H90v-14H72v-23H62v-16h13V87h8Z", "#8fb5ae"),
+        pixelPath("M91 80h43V68h35v11h43v13h20v21h12v16h-12v20h-23v9h-58v9h-24v-12H99v-14H81v-23H72v-4h12V93h7Z", "#a6cbca"),
+        pixelPath("M106 85h37V77h22v9h38v15h22v25h-16v15h-68v9h-28v-15H91v-28h15Z", "#b6d6d1"));
+      [[105, 94, 25], [162, 118, 32], [120, 143, 18], [197, 96, 16]].forEach(([rx, ry, w]) => put(pixelRect(rx, ry, w, 3, "#d4e7d9"), pixelRect(rx + 7, ry + 7, w - 10, 2, "#c5e0d4")));
+      [[73, 72], [246, 142], [93, 173]].forEach(([rx, ry]) => put(pixelRect(rx, ry - 14, 3, 22, "#849d70"), pixelRect(rx + 6, ry - 20, 3, 27, "#a1b480"), pixelRect(rx + 5, ry - 23, 5, 8, "#a58f64")));
+      put(pixelPath("M188 137h12v4h6v6h-10v4h-13v-8h5Z", "#8da982"), pixelRect(194, 138, 4, 4, "#d5b794"), pixelTree(274, 50, 0));
+    } else {
+      put(pixelTree(65, 72, 1), pixelTree(240, 144, 2), pixelShrub(142, 159), pixelShrub(180, 172),
+        pixelPath("M91 172h21v5h8v16H85v-13h6Z", "#b4b79a"), pixelRect(91, 175, 19, 5, "#d0cfb3"), pixelRect(111, 180, 8, 11, "#a4a98c"));
+      for (let i = 0; i < 7; i++) put(pixelFlower(115 + i * 12, 73 + i % 3 * 10, colors[i % 4]));
+    }
+    return patch;
+  }
+
+  function worldBackground(map) {
+    const [width, height] = map.world;
+    const svg = svgNode("svg", { class: "world-bg", viewBox: `0 0 ${width} ${height}`, width, height, "shape-rendering": "crispEdges", "aria-hidden": "true" });
+    svg.append(pixelRect(0, 0, width, height, "#d6e4b8"));
+    const rand = mulberry32(20261110);
+    for (let i = 0; i < 70; i++) {
+      const x = Math.floor(rand() * width / 6) * 6, y = Math.floor(rand() * height / 6) * 6;
+      const patch = pixelPath("M0 12h18V0h42v6h24v12h12v24H78v12H36v-6H12V36H0Z", i % 2 ? "#cedfae" : "#d0e0b0");
+      patch.setAttribute("transform", `translate(${x} ${y})`); svg.append(patch);
+    }
+    // Sparse three-pixel flecks match the density of town.svg, with no square lawn borders.
+    const flecks = ["#c3d69f", "#bfcf9d", "#e3ebca", "#c9dca9"];
+    for (let i = 0; i < 2100; i++) {
+      const x = Math.floor(rand() * width / 3) * 3, y = Math.floor(rand() * height / 3) * 3;
+      if (x > map.core[0] && x < map.core[0] + map.core[2] && y > map.core[1] && y < map.core[1] + map.core[3]) continue;
+      svg.append(pixelRect(x, y, 3, 3, flecks[i % 4]));
+      if (i % 3 === 0) svg.append(pixelRect(x + 6, y + 3, 3, 3, flecks[i % 4]));
+    }
+    const road = (x, y, w, h) => {
+      svg.append(pixelRect(x, y, w, h, "#dfd1a9"), pixelRect(x, y + h - 3, w, 3, "#d0c197"));
+      for (let step = 12; step < w - 12; step += 38) {
+        svg.append(pixelRect(x + step, y + (step % 3) * 3 + 3, 7, 2, "#cbbb91"), pixelRect(x + step + 14, y + h - 7, 11, 2, "#e9dfbd"));
+      }
+    };
+    for (const y of [520, 800]) { road(0, y, map.core[0], 20); road(map.core[0] + map.core[2], y, width - map.core[0] - map.core[2], 20); }
+    road(0, 268, width, 14); road(0, 1070, width, 14);
+    const occupied = new Set(ui.state.agents.filter(agent => Number.isInteger(agent.plot?.slot)).map(agent => agent.plot.slot));
+    (map.slots || []).forEach(([cx, cy], index) => {
+      if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
+      if (cy > 300 && cy < 1000) svg.append(pixelRect(cx - 11, cy + 119, 22, 17, "#dfd1a9"));
+    });
+    for (let i = 0; i < 38; i++) {
+      const x = 25 + Math.floor(rand() * (width - 50)), y = i % 2 ? 289 : 1047;
+      svg.append(pixelFlower(x, y, i % 2 ? "#dcc38a" : "#ddaf8a"));
+    }
+    return svg;
+  }
+
+  function updateMap() {
+    const world = $("#map-world"), map = ui.state?.map;
+    if (!world || !map) return;
+    const layoutKey = JSON.stringify(map);
+    if (mapView.layout !== layoutKey) {
+      world.replaceChildren();
+      mapView.plots.clear(); mapView.background = null; mapView.layout = layoutKey;
+      world.style.width = `${map.world[0]}px`; world.style.height = `${map.world[1]}px`;
+      const art = el("img", "map-art");
+      art.src = "/assets/town.svg"; art.alt = ""; art.draggable = false;
+      art.setAttribute("aria-hidden", "true");
+      art.style.left = `${map.core[0]}px`; art.style.top = `${map.core[1]}px`;
+      art.style.width = `${map.core[2]}px`; art.style.height = `${map.core[3]}px`;
+      world.append(art);
+    }
+    const backgroundKey = JSON.stringify(ui.state.agents.map(agent => agent.plot?.slot).filter(Number.isInteger).sort((a, b) => a - b));
+    if (mapView.background !== backgroundKey) {
+      $(".world-bg", world)?.remove(); world.prepend(worldBackground(map)); mapView.background = backgroundKey;
+    }
+    const present = new Set();
+    for (const agent of ui.state.agents) {
+      present.add(agent.id);
+      const signature = JSON.stringify([agent.name, agent.avatar, agent.home, agent.plot, agent.house]);
+      let record = mapView.plots.get(agent.id);
+      if (!record || record.signature !== signature) {
+        const plot = renderPlot(agent, map);
+        if (!plot) continue;
+        const oldFocus = record?.node.contains(document.activeElement) ? document.activeElement.classList.contains("map-resident") ? ".map-resident" : ".home-hit" : null;
+        if (record) record.node.replaceWith(plot); else world.append(plot);
+        record = { node: plot, signature }; mapView.plots.set(agent.id, record);
+        if (oldFocus) $(oldFocus, plot)?.focus({ preventScroll: true });
+      }
+      record.node.classList.toggle("selected", agent.id === ui.selected);
+      $$("[data-agent]", record.node).forEach(button => {
+        button.classList.toggle("selected", agent.id === ui.selected);
+        button.setAttribute("aria-pressed", String(agent.id === ui.selected));
+      });
+    }
+    for (const [id, record] of mapView.plots) if (!present.has(id)) { record.node.remove(); mapView.plots.delete(id); }
+    applyMapTransform();
   }
 
   function renderSuggestions() {
@@ -825,7 +1307,7 @@
       const result = await api(create ? "/api/agents" : `/api/agents/${encodeURIComponent(ui.dialogAgent)}`, { method: create ? "POST" : "PATCH", body });
       $("#profile-dialog").close();
       await loadState();
-      if (create && result.agent?.id) await selectAgent(result.agent.id, true);
+      if (create && result.agent?.id) { await selectAgent(result.agent.id, true); revealResident(result.agent.id); }
       else if (ui.selected) renderMessages(ui.selected, false);
       toast(create ? `${name}搬进小镇啦，去打个招呼吧。` : "角色档案已保存，伙伴会带着这些记忆与你相处。");
     } catch (error) {
@@ -887,6 +1369,7 @@
   $("#today-label").textContent = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   const showSettingsInitially = location.hash === "#settings";
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
+  initMapPan();
   loadSkins();
   loadState({ initial: true });
   if (showSettingsInitially) openSettings();

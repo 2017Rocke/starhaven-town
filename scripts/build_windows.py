@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble a portable Windows 10 x64 (Intel/AMD) package for Starhaven Town."""
+"""Build a per-user installer and portable Windows 10 1809+ x64 package."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +10,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import tempfile
 import zipfile
 import zlib
 
@@ -53,148 +52,155 @@ def generate_icon_png(path: Path, size: int = 64):
     write_png(path, rows)
 
 
+WEBVIEW_SDK_VERSION = "1.0.3537.50"
+WEBVIEW_SDK_SHA256 = "5ea526bbd728adda0da4d31219267e96460494a427e4894c4e09d9f320f4b9aa"
+
+
 def copy_runtime(src: Path, dest: Path):
     if dest.exists():
         shutil.rmtree(dest)
-    shutil.copytree(src, dest, symlinks=False)
-    # Ensure python.exe exists for console-less launcher fallback.
-    if not (dest / "python.exe").exists():
+    shutil.copytree(src, dest, symlinks=False, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+    if not (dest / "python.exe").is_file():
         raise RuntimeError("Python runtime missing python.exe: " + str(src))
 
 
-def _site_packages(runtime: Path, python: Path) -> Path:
-    script = "import sysconfig; print(sysconfig.get_path('purelib'))"
-    out = subprocess.check_output([str(python), "-c", script], text=True).strip()
-    path = Path(out)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+def generate_icon_ico(png: Path, icon: Path):
+    # A PNG-backed ICO is supported on every Windows version we target.
+    payload = png.read_bytes()
+    icon.write_bytes(struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 64, 64, 0, 0, 1, 32, len(payload), 22) + payload)
 
 
-def install_webview(python: Path, runtime: Path):
-    """Install WebView host into the bundled runtime without mutating uv's external marker."""
-    target = _site_packages(runtime, python)
-    # Use the build host interpreter's pip to drop wheels into the runtime site-packages.
-    host = Path(sys.executable)
-    run(
-        host,
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--upgrade",
-        "--target",
-        str(target),
-        "pywebview>=5.1",
-        "pythonnet>=3.0.3",
-        "clr_loader>=0.2.6",
-        "proxy_tools",
-        "bottle",
-        "typing_extensions",
-    )
-    # Smoke import inside the target interpreter.
-    run(python, "-c", "import webview, sys; print('webview', getattr(webview, '__version__', 'unknown'), sys.version)")
+def download_webview_sdk(cache: Path) -> Path:
+    import urllib.request
+    cache.mkdir(parents=True, exist_ok=True)
+    archive = cache / ("webview2-" + WEBVIEW_SDK_VERSION + ".nupkg")
+    if not archive.is_file():
+        url = "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/{0}/microsoft.web.webview2.{0}.nupkg".format(WEBVIEW_SDK_VERSION)
+        with urllib.request.urlopen(url, timeout=90) as response:
+            payload = response.read(20 * 1024 * 1024)
+        if hashlib.sha256(payload).hexdigest() != WEBVIEW_SDK_SHA256:
+            raise RuntimeError("Microsoft WebView2 SDK checksum mismatch")
+        archive.write_bytes(payload)
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != WEBVIEW_SDK_SHA256:
+        raise RuntimeError("Cached Microsoft WebView2 SDK checksum mismatch; remove " + str(archive))
+    return archive
+
+
+def build_native_host(package: Path):
+    sdk = download_webview_sdk(ROOT / "build" / "downloads")
+    with zipfile.ZipFile(sdk) as archive:
+        members = {
+            "lib/net462/Microsoft.Web.WebView2.Core.dll": "Microsoft.Web.WebView2.Core.dll",
+            "lib/net462/Microsoft.Web.WebView2.WinForms.dll": "Microsoft.Web.WebView2.WinForms.dll",
+            "build/native/x64/WebView2Loader.dll": "WebView2Loader.dll",
+            "LICENSE.txt": "LICENSE-WebView2.txt",
+        }
+        for source, target in members.items():
+            (package / target).write_bytes(archive.read(source))
+    from runtime_check_windows import pe_machine
+    if pe_machine(package / "WebView2Loader.dll") != 0x8664:
+        raise RuntimeError("WebView2 native loader must be x64")
+    compiler = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+    if not compiler.is_file():
+        raise RuntimeError(".NET Framework C# compiler is missing: " + str(compiler))
+    # Built-in Framework compiler targets the old Framework API surface, not modern .NET.
+    run(compiler, "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/debug-", "/utf8output", "/codepage:65001",
+        "/out:" + str(package / "StarhavenTown.exe"),
+        "/win32icon:" + str(package / "app-icon.ico"),
+        "/win32manifest:" + str(ROOT / "desktop" / "windows.manifest"),
+        "/reference:System.dll", "/reference:System.Core.dll", "/reference:System.Drawing.dll",
+        "/reference:System.Windows.Forms.dll", "/reference:System.Web.Extensions.dll",
+        "/reference:" + str(package / "Microsoft.Web.WebView2.Core.dll"),
+        "/reference:" + str(package / "Microsoft.Web.WebView2.WinForms.dll"),
+        ROOT / "desktop" / "WindowsHost.cs")
+    (package / "StarhavenTown.exe.config").write_text(
+        '<?xml version="1.0" encoding="utf-8"?><configuration><startup><supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.7.2"/></startup></configuration>\n', encoding="utf-8")
 
 
 def write_launcher(package: Path):
-    # pythonw keeps a desktop-app feel without a console window.
-    cmd = package / "启动星栖小镇.cmd"
-    cmd.write_text(
-        "@echo off\r\n"
-        "setlocal\r\n"
-        "cd /d \"%~dp0\"\r\n"
-        "if exist \"backend\\runtime\\pythonw.exe\" (\r\n"
-        "  start \"\" \"backend\\runtime\\pythonw.exe\" -I -B \"backend\\windows_app.py\"\r\n"
-        ") else (\r\n"
-        "  \"backend\\runtime\\python.exe\" -I -B \"backend\\windows_app.py\"\r\n"
-        ")\r\n",
-        encoding="utf-8",
+    (package / "使用说明.txt").write_text(
+        DISPLAY_NAME + " Windows x64 版\n\n"
+        "安装版：双击 Setup.exe 安装，仅当前用户使用，不需要管理员权限。\n"
+        "便携版：完整解压后双击 StarhavenTown.exe；不要单独移动 exe。支持中文、空格路径。\n"
+        "系统：Windows 10 1809（内部版本 17763）及以上，64 位 Intel/AMD 处理器。\n"
+        "已内置 Python，无需自己安装 Python、Node.js 或 pywebview。\n"
+        "需要 .NET Framework 4.7.2（标准 Windows 10 1809 自带）和 Microsoft Edge WebView2。\n"
+        "旧系统未必自带 WebView2；首次启动会提供微软官方安装入口。选 Evergreen Standalone Installer x64。\n"
+        "https://developer.microsoft.com/microsoft-edge/webview2/#download-section\n"
+        "AI 对话请在「小镇设置」连接自己的模型服务；密钥保存在 Windows 凭据管理器。\n"
+        "数据：%LOCALAPPDATA%\\StarhavenTown（菜单可打开）。升级与卸载保留此目录。\n"
+        "Windows 10.0.17763.379 尚未真机验证。微软支持要求安装适用累计更新；古老补丁可能影响运行时安装与 HTTPS。\n"
+        "当前 EXE 尚未代码签名，系统可能显示未知发布者；请从官方 GitHub Releases 下载。\n",
+        encoding="utf-8-sig",
     )
-    ps1 = package / "启动星栖小镇.ps1"
-    ps1.write_text(
-        "$ErrorActionPreference = 'Stop'\n"
-        "Set-Location -LiteralPath $PSScriptRoot\n"
-        "$pythonw = Join-Path $PSScriptRoot 'backend\\runtime\\pythonw.exe'\n"
-        "$python = Join-Path $PSScriptRoot 'backend\\runtime\\python.exe'\n"
-        "$app = Join-Path $PSScriptRoot 'backend\\windows_app.py'\n"
-        "if (Test-Path -LiteralPath $pythonw) {\n"
-        "  Start-Process -FilePath $pythonw -ArgumentList @('-I','-B', $app)\n"
-        "} else {\n"
-        "  & $python -I -B $app\n"
-        "}\n",
-        encoding="utf-8",
-    )
-    readme = package / "使用说明.txt"
-    readme.write_text(
-        DISPLAY_NAME + " Windows 10 x64 便携版\n"
-        "================================\n\n"
-        "1. 解压到任意目录（建议路径不含中文空格以外的特殊权限限制）。\n"
-        "2. 双击「启动星栖小镇.cmd」。\n"
-        "3. 首次对话前，在右上角「小镇设置」连接你自己的模型服务。\n"
-        "4. API 密钥保存在 Windows 凭据管理器，不会写入本解压目录或 Git 仓库。\n"
-        "5. 个人数据目录：%LOCALAPPDATA%\\StarhavenTown\\\n"
-        "6. 需要 Microsoft Edge WebView2 运行时（Windows 10/11 通常已自带）。\n"
-        "7. 本包面向 64 位 Windows 10（Intel/AMD x86_64）。\n",
-        encoding="utf-8",
-    )
+
+
+def checksum(path: Path):
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    path.with_name(path.name + ".sha256").write_text(digest + "  " + path.name + "\n", encoding="utf-8")
+
+
+def find_inno_setup() -> Path:
+    candidates = [shutil.which("ISCC.exe")]
+    for variable in ("ProgramFiles(x86)", "ProgramFiles"):
+        base = os.environ.get(variable)
+        if base:
+            candidates.append(str(Path(base) / "Inno Setup 6" / "ISCC.exe"))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    raise RuntimeError("Install Inno Setup 6 from https://jrsoftware.org/isdl.php before building the installer.")
 
 
 def build_package(runtime_src: Path, output_dir: Path, version: str) -> Path:
+    import re
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("VERSION must contain a numeric three-part release version")
     build = ROOT / "build" / "windows-x64"
     if build.exists():
         shutil.rmtree(build)
     package = build / f"{APP_NAME}-{version}-windows-x64"
     backend = package / "backend"
     backend.mkdir(parents=True)
-
-    for name in (
-        "server.py",
-        "desktop_runner.py",
-        "model_bridge.py",
-        "provider_bridge.py",
-        "credential_store.py",
-        "VERSION",
-    ):
+    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "VERSION"):
         shutil.copy2(ROOT / name, backend / name)
-    shutil.copy2(ROOT / "desktop" / "windows_app.py", backend / "windows_app.py")
     shutil.copytree(ROOT / "web", backend / "web")
     for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
-        if (ROOT / name).exists():
-            shutil.copy2(ROOT / name, package / name)
-
+        shutil.copy2(ROOT / name, package / name)
     runtime = backend / "runtime"
     copy_runtime(runtime_src, runtime)
-    python = runtime / "python.exe"
-    install_webview(python, runtime)
-
-    icon = package / "app-icon.png"
-    generate_icon_png(icon)
+    from runtime_check_windows import verify_runtime
+    print("Bundled runtime:", verify_runtime(runtime, check_https=True))
+    generate_icon_png(package / "app-icon.png")
+    generate_icon_ico(package / "app-icon.png", package / "app-icon.ico")
+    build_native_host(package)
     write_launcher(package)
-
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = output_dir / f"{APP_NAME}-{version}-windows-x64.zip"
-    if archive.exists():
-        archive.unlink()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(package.rglob("*")):
             if path.is_file():
                 zf.write(path, path.relative_to(build).as_posix())
-    checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (output_dir / (archive.name + ".sha256")).write_text(checksum + "  " + archive.name + "\n", encoding="utf-8")
-    print("Windows package:", archive)
+    checksum(archive)
+    run(find_inno_setup(), "/DAppVersion=" + version, "/DPackageDir=" + str(package),
+        "/DOutputDir=" + str(output_dir), ROOT / "desktop" / "windows_installer.iss")
+    installer = output_dir / f"{APP_NAME}-{version}-windows-x64-Setup.exe"
+    if not installer.is_file():
+        raise RuntimeError("Inno Setup did not produce the installer")
+    checksum(installer)
+    print("Windows installer:", installer)
+    print("Windows portable:", archive)
     return archive
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python-runtime", type=Path, required=True, help="Windows x64 Python prefix containing python.exe")
+    parser.add_argument("--python-runtime", type=Path, required=True, help="Relocatable Windows x64 Python 3.12 prefix containing python.exe")
     args = parser.parse_args()
     if sys.platform != "win32":
-        raise SystemExit("Build the Windows package on a Windows x64 machine (or GitHub Actions windows-latest).")
-    if os.environ.get("PROCESSOR_ARCHITECTURE", "").lower() not in ("amd64", "x86_64") and os.environ.get("PROCESSOR_ARCHITEW6432", "").lower() not in ("amd64", "x86_64"):
-        # Allow build on 64-bit Windows; PROCESSOR_ARCHITECTURE is AMD64 on x64.
-        arch = os.environ.get("PROCESSOR_ARCHITECTURE", "")
-        if arch.upper() != "AMD64":
-            print("Warning: expected AMD64 host, found", arch)
+        raise SystemExit("Build the Windows installer on Windows x64 (or GitHub Actions windows-2022).")
+    if struct.calcsize("P") != 8:
+        raise SystemExit("Use a 64-bit Python build host")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     build_package(args.python_runtime.resolve(), ROOT / "dist", version)
 

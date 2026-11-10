@@ -1,2 +1,3 @@
-# No pip dependencies. Build with Python 3.9+, a relocatable Python runtime,
-# and Apple's Command Line Tools (Swift, codesign, iconutil, hdiutil).
+# No pip packages required. macOS: Swift, a relocatable Python runtime, codesign, iconutil, hdiutil.
+# Windows: Python 3.12 x64 runtime, .NET Framework C# compiler, Inno Setup 6.
+# build_windows.py downloads the pinned official WebView2 SDK with a SHA-256 check.

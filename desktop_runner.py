@@ -97,18 +97,23 @@ def _parent_running(pid):
         return False
     if sys.platform == "win32":
         import ctypes
-        SYNCHRONIZE = 0x00100000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE | 0x0400, False, pid)
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        # QUERY_LIMITED_INFORMATION works for an unelevated parent and keeps x64 handles intact.
+        handle = kernel.OpenProcess(0x1000, False, pid)
         if not handle:
             return False
         try:
-            code = ctypes.c_ulong()
-            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == STILL_ACTIVE
+            code = wintypes.DWORD()
+            return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
         finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
@@ -121,6 +126,7 @@ def main():
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--ready-file", type=Path)
     parser.add_argument("--parent-pid", type=int)
+    parser.add_argument("--stop-file", type=Path, help="Private desktop shutdown signal")
     parser.add_argument("--legacy-dir", type=Path)
     parser.add_argument("--migrate-only", action="store_true")
     args = parser.parse_args()
@@ -142,6 +148,9 @@ def main():
 
     def watch_parent():
         while not stopping.wait(0.5):
+            if args.stop_file and args.stop_file.is_file():
+                shutdown()
+                return
             # Prefer explicit parent pid so Windows and detached launchers still stop cleanly.
             if args.parent_pid:
                 if not _parent_running(args.parent_pid):
@@ -151,8 +160,8 @@ def main():
                 shutdown()
                 return
 
-    if args.parent_pid:
-        if not _parent_running(args.parent_pid):
+    if args.parent_pid or args.stop_file:
+        if args.parent_pid and not _parent_running(args.parent_pid):
             server.server_close()
             return
         threading.Thread(target=watch_parent, daemon=True).start()

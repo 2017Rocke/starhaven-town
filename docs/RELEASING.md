@@ -38,7 +38,7 @@ python3 scripts/export_source.py
 
 将本目录作为独立仓库推送。提交前运行 `python3 scripts/export_source.py`；白名单只包含可公开源文件，并扫描明显个人路径与密钥，不把整个工作区直接压缩。
 
-`ci.yml` 在推送后运行测试；`release.yml` 通过 GitHub Actions 的 Run workflow 手动构建两种 macOS 架构，结果保存在该次运行的 Artifacts 中。维护者验收后再将安装包上传到 Release，构建流程不会覆盖已经发布的安装包。上传仓库后还需真实运行工作流；本机测试不能代替远端 CI 验收。日常操作见 [GitHub 上传与更新步骤](GITHUB_USAGE.md)。
+`ci.yml` 在推送后运行测试；`release.yml` 通过 GitHub Actions 的 Run workflow 手动构建两种 macOS 架构及 Windows x64，结果保存在该次运行的 Artifacts 中。维护者验收后再将安装包上传到 Release，构建流程不会覆盖已经发布的安装包。上传仓库后还需真实运行工作流；本机测试不能代替远端 CI 验收。日常操作见 [GitHub 上传与更新步骤](GITHUB_USAGE.md)。
 
 ## Apple 签名公证
 
@@ -57,15 +57,19 @@ xcrun stapler staple dist/StarhavenTown-VERSION-macOS-arm64.dmg
 替换版本、架构与身份。公证完成后重新计算 DMG 的 SHA-256。自动工作流默认只构建预览包，未声称已完成签名公证。未来在线升级需验证可信发布源、签名、失败回滚及用户控制。
 
 
-### Windows 10 x64
+### Windows 10 1809 x64
 
-在 **64 位 Windows** 上构建（本机 Intel/AMD 或 GitHub `windows-latest`）：
+在 **64 位 Windows** 上构建（本机 Intel/AMD 或 GitHub `windows-2022`）。需要 .NET Framework 编译器、Inno Setup 6 和可重定位 Python 3.12；构建脚本从微软官方 NuGet 获取固定版本 WebView2 SDK 并校验 SHA-256。
 
-```bat
+```powershell
 uv python install 3.12
-for /f %i in ('uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"') do set RUNTIME=%i
-uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime %RUNTIME%
+$runtime = uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"
+uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime $runtime
 uv run --python 3.12 --no-project python scripts/export_source.py
 ```
 
-输出 `dist/StarhavenTown-版本-windows-x64.zip` 与 `.sha256`。包内含嵌入式 Python、WebView 依赖与 `启动星栖小镇.cmd`。用户数据在 `%LOCALAPPDATA%\StarhavenTown\`，密钥在 Windows 凭据管理器。
+输出 `dist/StarhavenTown-版本-windows-x64-Setup.exe`、便携 `.zip` 和各自 `.sha256`。包内含 Python、原生 `StarhavenTown.exe`、WebView2 SDK 组件及许可。WebView2 浏览器运行时由使用者另行从微软安装；标准 Windows 10 1809 自带 .NET Framework 4.7.2。
+
+构建后在独立 Windows 测试账号中执行 `tests/test_windows_integration.py`，设置 `STARHAVEN_WINDOWS_APP` 和 `STARHAVEN_WINDOWS_INSTALLER` 为刚生成的 EXE 路径。测试会创建快捷方式和卸载注册信息，不能在正在使用的小镇账号下随意运行。GitHub 工作流自动完成该检查，分别验证原生窗口、实际地图加载、中文路径、退出清理及安装升级/卸载保留数据。
+
+Windows `10.0.17763.379` 尚未真机验证，现代 Windows 构建成功不能替代该版本验收。依赖、官方依据与旧系统测试清单见 [WINDOWS](WINDOWS.md)。

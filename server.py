@@ -31,6 +31,114 @@ DEFAULTS = [
     dict(id="scout", name="星探", role="开源项目研究员", personality="好奇、灵动、认真。喜欢用具体例子解释新发现，分清事实和推测；遇到有趣的项目会兴奋，但不会夸大证据。", bio="住在观察站的开源研究员，收集有用的项目、阅读固定版本源码、梳理实现原理与风险线索。背包里装着新点子和可追溯的证据。", color="#7fa987", avatar="scout", home="观察站", greeting="你来啦！我把新发现都放进了研究手记，今天想探索哪个方向？", suggestions=["今天发现了哪些有趣项目？", "给我讲讲最新研究的原理", "推荐一个适合我的探索方向"]),
 ]
 
+# 大地图：世界 2880×1320（宽 3 个视口、高 2 个视口），可按住拖动浏览。
+# 村心老地图保持 960×660 原尺寸居中——视口与村心同高，打开时看到的小镇与旧版一模一样。
+# 住宅贴着村心生长：左右两片三层住宅区、上下两排临街小屋，按离村心远近分配，
+# 共 28 块地，加上村心两座老建筑（指挥所、观察站），保留旧版 30 人容量。
+WORLD_W, WORLD_H = 2880, 1320
+CORE_W, CORE_H = 960, 660
+CORE_X, CORE_Y = (WORLD_W - CORE_W) // 2, (WORLD_H - CORE_H) // 2
+PLOT_W, PLOT_H = 320, 240
+# 地块错落排布：村心左右各三列、上下各一排，行距 280（留出院落之间的草地），
+# 同一列内用 ±5 像素的纵向偏移避免像棋盘。
+PLOT_SLOTS = [
+    # 村心两侧最里一列（最近的邻居）
+    (800, 670), (800, 390), (800, 950),
+    (2080, 670), (2080, 390), (2080, 950),
+    # 村心正上/正下的临街小屋
+    (1197, 142), (1563, 138),
+    (1202, 1183), (1558, 1177),
+    # 中间一列
+    (480, 670), (480, 390), (480, 950),
+    (2400, 670), (2400, 390), (2400, 950),
+    # 最外一列与大路两端的房子
+    (160, 670), (840, 142), (1920, 138),
+    (840, 1192), (1920, 1192),
+    (160, 390), (160, 950),
+    (2720, 670), (2720, 390), (2720, 950),
+    # 补足旧版容量；追加编号让已有居民保留自己的地块。
+    (480, 140), (2400, 1200),
+]
+MAX_RESIDENTS = len(PLOT_SLOTS) + len(DEFAULTS)
+
+# 村心老地图里已经画好的两座建筑（按老地图 960×660 的比例记录命中区域）。
+PAINTED_HOMES = {
+    "linghang": dict(style="command", name="指挥所", rect=dict(x=0.152, y=0.230, w=0.250, h=0.310)),
+    "scout": dict(style="observatory", name="观察站", rect=dict(x=0.577, y=0.186, w=0.230, h=0.340)),
+}
+
+# 房子风格按职业/个性关键词判定；顺序即同分时的优先级。
+# 配色取自老地图 town.svg 的柔和色板，明暗层次由前端按同一色系推导。
+HOUSE_STYLES = [
+    ("command", "指挥小屋", [r"主管", r"协调", r"指挥", r"统筹", r"管理", r"领导", r"队长"]),
+    ("observatory", "观察站", [r"研究", r"观察", r"情报", r"调查", r"探索", r"分析", r"星探", r"资料", r"阅读", r"记录"]),
+    ("architecture", "设计塔楼", [r"架构", r"重构", r"底层", r"系统设计", r"蓝图"]),
+    ("workshop", "创造工坊", [r"开发", r"工程师", r"程序", r"代码", r"软件", r"编程", r"测试", r"迭代", r"前端", r"后端", r"产品"]),
+    ("farm", "养鸡小院", [r"养鸡", r"鸡", r"农", r"种植", r"园艺", r"牧场", r"养殖", r"植物", r"菜园", r"果园"]),
+    ("music", "旋律小屋", [r"音乐", r"歌", r"摇滚", r"乐队", r"乐器", r"节奏", r"舞台"]),
+    ("finance", "行情小屋", [r"股票", r"金融", r"投资", r"交易", r"理财", r"基金", r"行情", r"证券"]),
+    ("school", "研学小筑", [r"学习", r"教育", r"课程", r"教学", r"老师", r"讲解", r"学堂"]),
+    ("cottage", "温馨小屋", []),
+]
+STYLE_PALETTES = {
+    "command": dict(wall="#c2936c", roof="#a48d6a", trim="#8a6f4d", accent="#bb8964", dark="#5d564b", light="#eee0bd"),
+    "observatory": dict(wall="#bbad80", roof="#9cac91", trim="#7d8c74", accent="#8ba7a0", dark="#4e6376", light="#e5e6c9"),
+    "architecture": dict(wall="#a7b594", roof="#7d8c74", trim="#5f7158", accent="#6d855e", dark="#42566a", light="#d5dfc7"),
+    "workshop": dict(wall="#d4a078", roof="#ad9a71", trim="#8a6f4d", accent="#c98a5c", dark="#584430", light="#e5dcbe"),
+    "farm": dict(wall="#d8c99e", roof="#bb8964", trim="#9e6b4e", accent="#c9a24e", dark="#5c3a2c", light="#eee0bd"),
+    "music": dict(wall="#c9bcc8", roof="#a096a4", trim="#7f7480", accent="#c0a060", dark="#58407a", light="#e8e0e6"),
+    "finance": dict(wall="#c6b88c", roof="#8ea66b", trim="#6d855e", accent="#bca079", dark="#3e5c41", light="#e5dcbe"),
+    "school": dict(wall="#ded6b5", roof="#c2936c", trim="#8a6f4d", accent="#8ea66b", dark="#5f4a33", light="#f0e7cc"),
+    "cottage": dict(wall="#e5dcbe", roof="#bb8964", trim="#9e6b4e", accent="#d4a078", dark="#6b4230", light="#f2ecd2"),
+}
+
+
+def _hex(value):
+    return re.fullmatch(r"#[0-9a-fA-F]{6}", value or "") is not None
+
+
+def _stable_variant(identity):
+    # 从居民编号稳定取 0..3 的外观变体，同一居民重开小镇不变。
+    return sum(ord(ch) for ch in str(identity)) % 4
+
+
+def design_house(identity, name, role, personality, bio, color):
+    """按职业/个性/简介关键词设计房子：风格、名字、配色与外观变体。"""
+    scores = {}
+    for weight, text in ((3, role), (2, personality), (1, bio)):
+        for style, label, keywords in HOUSE_STYLES:
+            if style == "cottage":
+                continue
+            hits = sum(1 for keyword in keywords if re.search(keyword, text or ""))
+            if hits:
+                scores[style] = scores.get(style, 0) + weight * hits
+    style = max(scores, key=lambda key: (scores[key], -[s for s, _, _ in HOUSE_STYLES].index(key))) if scores else "cottage"
+    label = next(v[1] for v in HOUSE_STYLES if v[0] == style)
+    palette = dict(STYLE_PALETTES[style])
+    if _hex(color):
+        palette["accent"] = color.lower()
+    return dict(
+        style=style,
+        name="%s的%s" % (name, label),
+        label=label,
+        palette=palette,
+        variant=_stable_variant(identity),
+        painted=False,
+    )
+
+
+def painted_house(agent_id):
+    """村心老建筑：返回老地图上的命中区域（比例）与风格。"""
+    base = PAINTED_HOMES.get(agent_id)
+    if not base:
+        return None
+    rect = base["rect"]
+    center_x = CORE_X + (rect["x"] + rect["w"] / 2) * CORE_W
+    center_y = CORE_Y + (rect["y"] + rect["h"] / 2) * CORE_H
+    palette = dict(STYLE_PALETTES[base["style"]])
+    return dict(style=base["style"], name=base["name"], label=base["name"], palette=palette,
+                variant=0, painted=True, rect=rect, center=[int(center_x), int(center_y)])
+
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -74,20 +182,26 @@ def _lock_instance(file_obj):
 
         class OVERLAPPED(ctypes.Structure):
             _fields_ = [
-                ("Internal", ctypes.c_ulonglong),
-                ("InternalHigh", ctypes.c_ulonglong),
+                ("Internal", ctypes.c_size_t),
+                ("InternalHigh", ctypes.c_size_t),
                 ("Offset", wintypes.DWORD),
                 ("OffsetHigh", wintypes.DWORD),
                 ("hEvent", wintypes.HANDLE),
             ]
 
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.LockFileEx.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                                      wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
+        kernel32.LockFileEx.restype = wintypes.BOOL
         handle = msvcrt.get_osfhandle(file_obj.fileno())
         overlapped = OVERLAPPED()
         LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
         LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
         if not kernel32.LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, ctypes.byref(overlapped)):
-            raise BlockingIOError
+            error = ctypes.get_last_error()
+            if error == 33:  # ERROR_LOCK_VIOLATION: another service owns the file.
+                raise BlockingIOError
+            raise ctypes.WinError(error)
         # Keep a marker so close() is enough to release via OS handle lifetime.
         file_obj._starhaven_win_lock = True
     else:
@@ -118,6 +232,9 @@ class TownApp:
         except BlockingIOError:
             self.instance_lock.close()
             raise RuntimeError("这个小镇的数据正在被另一个服务使用，请打开已运行的小镇。")
+        except Exception:
+            self.instance_lock.close()
+            raise
         try:
             self._initialize()
         except Exception:
@@ -167,10 +284,84 @@ class TownApp:
                     ON jobs(agent_id) WHERE status IN ('queued','running');
                 CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
+            # Schema and resident upgrades commit together; a failed migration
+            # must not leave some residents moved and others without a home.
+            db.execute("BEGIN IMMEDIATE")
+            columns = [row[1] for row in db.execute("PRAGMA table_info(agents)")]
+            if "plot" not in columns:
+                db.execute("ALTER TABLE agents ADD COLUMN plot TEXT NOT NULL DEFAULT '{}'")
+            if "house" not in columns:
+                db.execute("ALTER TABLE agents ADD COLUMN house TEXT NOT NULL DEFAULT '{}'")
             for item in DEFAULTS:
                 db.execute("INSERT OR IGNORE INTO agents (id,name,role,personality,bio,color,avatar,home,greeting,suggestions,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", tuple(item[k] for k in ("id", "name", "role", "personality", "bio", "color", "avatar", "home", "greeting")) + (json.dumps(item["suggestions"], ensure_ascii=False), now()))
+            self._backfill_plots(db)
             db.execute("UPDATE messages SET status='failed' WHERE id IN (SELECT user_message_id FROM jobs WHERE status IN ('queued','running'))")
             db.execute("UPDATE jobs SET status='failed', error=?, updated_at=? WHERE status IN ('queued','running')", ("服务重新启动，上次对话未完成，请重新发送。", now()))
+
+    @staticmethod
+    def _json_cell(value, fallback):
+        try:
+            data = json.loads(value) if isinstance(value, str) and value else fallback
+            return data if isinstance(data, dict) else fallback
+        except ValueError:
+            return fallback
+
+    @staticmethod
+    def _valid_slot(slot):
+        # JSON booleans compare equal to 0/1 in Python, but are not plot IDs.
+        return type(slot) is int and 0 <= slot < len(PLOT_SLOTS)
+
+    def _plot_taken(self, db):
+        taken = set()
+        for row in db.execute("SELECT id,plot FROM agents"):
+            slot = self._json_cell(row["plot"], {}).get("slot")
+            if row["id"] not in PAINTED_HOMES and self._valid_slot(slot):
+                taken.add(slot)
+        return taken
+
+    def _next_plot(self, db):
+        taken = self._plot_taken(db)
+        for index, (x, y) in enumerate(PLOT_SLOTS):
+            if index not in taken:
+                return dict(slot=index, pos=[x - PLOT_W // 2, y - PLOT_H // 2])
+        raise APIError(400, "小镇的地皮已经分完，最多容纳 %d 位居民。" % MAX_RESIDENTS)
+
+    @staticmethod
+    def _slot_pos(slot):
+        x, y = PLOT_SLOTS[slot]
+        return [x - PLOT_W // 2, y - PLOT_H // 2]
+
+    def _backfill_plots(self, db):
+        """保留有效分地，修复重复/无效分地；坐标和房屋由当前资料一致推导。"""
+        rows = db.execute("SELECT id,name,role,personality,bio,color,home,plot,house FROM agents ORDER BY rowid").fetchall()
+        residents = [row for row in rows if row["id"] not in PAINTED_HOMES]
+        if len(residents) > len(PLOT_SLOTS):
+            raise RuntimeError("存档中的居民超过小镇 %d 人容量，未改动居民资料，请先备份并检查导入的存档。" % MAX_RESIDENTS)
+        # Reserve all valid existing assignments before allocating missing ones.
+        # This prevents an early legacy row from taking a later resident's plot.
+        assignments, occupied = {}, set()
+        for row in residents:
+            slot = self._json_cell(row["plot"], {}).get("slot")
+            if self._valid_slot(slot) and slot not in occupied:
+                assignments[row["id"]] = slot
+                occupied.add(slot)
+        free_slots = iter(index for index in range(len(PLOT_SLOTS)) if index not in occupied)
+        for row in residents:
+            if row["id"] not in assignments:
+                assignments[row["id"]] = next(free_slots)
+        for row in rows:
+            stored_plot = self._json_cell(row["plot"], {})
+            stored_house = self._json_cell(row["house"], {})
+            if row["id"] in PAINTED_HOMES:
+                house = painted_house(row["id"])
+                plot = dict(slot=None, pos=house["center"], painted=True)
+            else:
+                house = design_house(row["id"], row["name"], row["role"], row["personality"], row["bio"], row["color"])
+                slot = assignments[row["id"]]
+                plot = dict(slot=slot, pos=self._slot_pos(slot))
+            if plot != stored_plot or house != stored_house or row["home"] != house.get("name"):
+                db.execute("UPDATE agents SET plot=?, house=?, home=? WHERE id=?",
+                           (json.dumps(plot, ensure_ascii=False), json.dumps(house, ensure_ascii=False), house["name"], row["id"]))
 
     def read_json(self, filename):
         path = self.source_dir / filename
@@ -197,6 +388,8 @@ class TownApp:
         result = dict(row)
         result["suggestions"] = json.loads(result["suggestions"])
         result["memories"] = json.loads(result["memories"])
+        result["plot"] = self._json_cell(result.get("plot"), {})
+        result["house"] = self._json_cell(result.get("house"), {})
         return result
 
     @staticmethod
@@ -270,6 +463,7 @@ class TownApp:
         skins, default_skin = self.skin_choices()
         selected_skin = saved_skin[0] if saved_skin and saved_skin[0] in skins else default_skin
         return dict(town=dict(name="星栖小镇", subtitle="让伙伴有自己的故事，让每一步成长有迹可循"),
+                    map=dict(world=[WORLD_W, WORLD_H], core=[CORE_X, CORE_Y, CORE_W, CORE_H], plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS),
                     provider=self.provider_status(), agents=agents, selected_agent_id=selected[0] if selected else "linghang",
                     selected_skin=selected_skin,
                     work_items=records[0], improvements=records[1], reports=self.reports(),
@@ -360,11 +554,15 @@ class TownApp:
             raise APIError(400, "请选择有效的颜色")
         identity = "resident-" + uuid.uuid4().hex
         with self.lock, self.db() as db:
-            if db.execute("SELECT count(*) FROM agents").fetchone()[0] >= 30:
-                raise APIError(400, "小镇最多容纳 30 位居民")
-            db.execute("INSERT INTO agents (id,name,role,personality,bio,color,avatar,home,greeting,suggestions,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                       (identity, name, declared_role, personality, bio, color, avatar, "伙伴小屋", "你好，我是%s。很高兴与你在小镇相遇。" % name,
-                        json.dumps(["介绍一下你自己", "我们一起聊聊新想法", "有什么值得记录的小目标？"], ensure_ascii=False), now()))
+            if db.execute("SELECT count(*) FROM agents").fetchone()[0] >= MAX_RESIDENTS:
+                raise APIError(400, "小镇最多容纳 %d 位居民" % MAX_RESIDENTS)
+            plot = self._next_plot(db)
+            house = design_house(identity, name, declared_role, personality, bio, color)
+            db.execute("INSERT INTO agents (id,name,role,personality,bio,color,avatar,home,greeting,suggestions,plot,house,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (identity, name, declared_role, personality, bio, color, avatar, house["name"],
+                        "你好，我是%s。很高兴与你在小镇相遇。" % name,
+                        json.dumps(["介绍一下你自己", "我们一起聊聊新想法", "有什么值得记录的小目标？"], ensure_ascii=False),
+                        json.dumps(plot, ensure_ascii=False), json.dumps(house, ensure_ascii=False), now()))
             return dict(agent=self.decorate(db, self._agent(db, identity)))
 
     def patch_agent(self, agent_id, data):
@@ -381,9 +579,14 @@ class TownApp:
                 raise APIError(400, "最多保存 20 条明确记忆")
             updates["memories"] = json.dumps([bounded_text(v, "记忆", 500, True) for v in values], ensure_ascii=False)
         with self.lock, self.db() as db:
-            self._agent(db, agent_id)
+            agent = self._agent(db, agent_id)
             for key, value in updates.items():
                 db.execute("UPDATE agents SET %s=? WHERE id=?" % key, (value, agent_id))
+            # 房屋随名字、个性和简介更新；职业权限与已有地块不变。
+            if agent_id not in PAINTED_HOMES and set(updates) & {"name", "personality", "bio"}:
+                profile = dict(agent, **updates)
+                house = design_house(agent_id, profile["name"], profile["role"], profile["personality"], profile["bio"], profile["color"])
+                db.execute("UPDATE agents SET house=?, home=? WHERE id=?", (json.dumps(house, ensure_ascii=False), house["name"], agent_id))
             return dict(agent=self.decorate(db, self._agent(db, agent_id)))
 
     def skin_choices(self):

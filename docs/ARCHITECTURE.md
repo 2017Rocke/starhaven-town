@@ -36,9 +36,10 @@ flowchart LR
 | `model_bridge.py` | 可选的本机 Codex 文本对话连接，关闭工具和外部执行能力 |
 | `web/` | 小镇、角色、聊天、任务板、成长册与设置页面 |
 | `web/skins/` | 皮肤清单、样式与新皮肤模板 |
-| `desktop/windows_app.py` | Windows 桌面壳：拉起后端、单实例、WebView2 窗口 |
+| `desktop/WindowsHost.cs` | Windows 原生窗口、WebView2、单实例、后端与子进程生命周期 |
+| `desktop/windows_installer.iss` | 每用户安装、桌面快捷方式、覆盖升级与卸载保留数据 |
 | `scripts/build_macos.py` | 组装 macOS 应用与内置运行时、生成图标、签名并制作安装镜像 |
-| `scripts/build_windows.py` | 组装 Windows x64 便携包（嵌入 Python + WebView 依赖） |
+| `scripts/build_windows.py` | Windows 原生编译、运行时校验、安装 EXE 与便携 ZIP |
 | `tests/` | 离线业务、接口、密钥隔离、取消、迁移与运行行为检查 |
 | `VERSION` | 应用和健康检查使用的版本号 |
 

@@ -49,16 +49,13 @@
 
       <section id="view-town" class="view town-view" role="tabpanel" aria-labelledby="tab-town">
         <div class="welcome-row"><div><p class="eyebrow">YOUR LITTLE WORLD, GROWING TOGETHER</p><h1>每个伙伴，都有自己的光。</h1><p class="welcome-copy">来小镇走走，聊聊想法，一起把事情做好。</p></div><span class="season-tag"><span></span>共建进行中</span></div>
-        <div class="town-scene" aria-label="像素小镇地图，点击建筑与居民开始对话">
-          <img class="map-art" src="/assets/town.svg" alt="温暖的像素小镇，有指挥所、观察站、菜园、树木和一条蓝色小河">
-          <div class="map-caption"><span class="live-dot"></span><span>小镇漫游</span><span class="caption-divider"></span><span id="resident-count">等待伙伴回家</span></div>
+        <div class="town-scene" id="town-scene" tabindex="0" role="region" aria-label="像素小镇地图" aria-describedby="map-help">
+          <div class="map-world" id="map-world"></div>
+          <div class="map-caption"><span class="live-dot"></span><span>小镇漫游</span><span class="caption-divider"></span><span id="resident-count">等待伙伴回家</span><span class="caption-divider"></span><span class="pan-hint">按住拖动探索</span></div>
           <span class="map-coordinate" aria-hidden="true">STARHAVEN · 01</span>
-          <button class="building-hit captain-home" data-agent="linghang" aria-label="进入指挥所，与领航对话"><span class="building-label"><span class="tiny-dot captain-dot"></span>指挥所<span class="label-arrow">↗</span></span><span class="building-selected" aria-hidden="true"></span></button>
-          <button class="building-hit scout-home" data-agent="scout" aria-label="进入观察站，与星探对话"><span class="building-label"><span class="tiny-dot scout-dot"></span>观察站<span class="label-arrow">↗</span></span><span class="building-selected" aria-hidden="true"></span></button>
-          <button class="map-resident captain-resident" data-agent="linghang" aria-label="与领航对话"><span class="resident-bubble">一起把想法落地吧</span><img src="/assets/captain.svg" alt="领航的像素角色"><span class="map-name">领航</span></button>
-          <button class="map-resident scout-resident" data-agent="scout" aria-label="与星探对话"><span class="resident-bubble">今天有什么新发现？</span><img src="/assets/scout.svg" alt="星探的像素角色"><span class="map-name">星探</span></button>
-          <button class="garden-sign" data-open-view="growth"><svg><use href="#i-leaf"/></svg><span>一起成长的小花园</span><span>↗</span></button>
-          <div class="map-tip"><svg><use href="#i-chat"/></svg><span>点击伙伴，开启一段对话</span></div>
+          <button class="garden-sign" data-map-control data-open-view="growth"><svg><use href="#i-leaf"/></svg><span>一起成长的小花园</span><span>↗</span></button>
+          <div class="map-tip" id="map-help"><svg aria-hidden="true"><use href="#i-chat"/></svg><span>拖动探索 · 点击伙伴聊天<span class="keyboard-map-help"> · 方向键漫游</span></span></div>
+          <button type="button" class="map-home" id="map-home" data-map-control aria-label="回到村心，键盘快捷键 Home"><svg aria-hidden="true"><use href="#i-town"/></svg><span>回到村心</span></button>
           <div class="map-compass" aria-hidden="true"><span>N</span><div>✦</div></div>
         </div>
         <div class="town-note"><div class="note-icon"><svg><use href="#i-spark"/></svg></div><div><strong>小镇的成长，来自真实的行动</strong><p id="team-status">正在了解伙伴们的近况…</p></div><button class="text-button" data-open-view="growth">翻开成长册 <span>→</span></button></div>

@@ -1,22 +1,25 @@
 # 星栖小镇 · Starhaven Town
 
-一个可以与智能体居民聊天、记录成长、观察团队工作的像素小镇。每位居民都有自己的名字、性格、简介、明确记忆和独立聊天记录。当前版本：**1.2.0**。
+一个可以与智能体居民聊天、记录成长、观察团队工作的像素小镇。每位居民都有自己的名字、性格、简介、明确记忆和独立聊天记录。当前版本：**1.5.0**。
 
 **面向日常使用：桌面版。** 支持 macOS 与 Windows 10 x64（Intel/AMD）。不再维护“在浏览器里开固定端口网页”的使用方式。
 
-当前提供领航与星探两位居民、自定义居民、真实模型对话、任务板、成长册，以及「暖绿原野」「星夜营地」两套皮肤。应用和个人数据分开保存，方便后续更新。
+当前提供可拖动探索的大地图、领航与星探、自定义居民和专属房屋、真实模型对话、任务板、成长册，以及「暖绿原野」「星夜营地」两套皮肤。小镇最多容纳 30 位居民，房屋按职业、性格与简介生成，空地保留果园、菜地、花田和池塘。应用和个人数据分开保存，方便后续更新。
 
-[下载 macOS 安装包](https://github.com/2017Rocke/starhaven-town/releases/latest) · [查看源码](https://github.com/2017Rocke/starhaven-town) · [如何上传与发布新版](docs/GITHUB_USAGE.md)
+[下载 Mac / Windows 版本](https://github.com/2017Rocke/starhaven-town/releases/latest) · [查看源码](https://github.com/2017Rocke/starhaven-town) · [如何上传与发布新版](docs/GITHUB_USAGE.md)
 
 ## 打开桌面版
 
 | 方式 | 说明 |
 | --- | --- |
-| 桌面图标 / `~/Applications/星栖小镇.app` | 日常入口 |
-| 仓库内 `打开星栖小镇.command` | 已安装时一键唤起桌面版 |
-| `dist/*.dmg` 安装器 | 首次安装或覆盖升级 |
+| macOS `.dmg` | Apple 芯片选 `arm64`，Intel 芯片选 `x86_64`；打开后运行「安装星栖小镇」 |
+| Windows `Setup.exe` | Windows 10 1809（17763）及以上 x64；按向导安装并创建桌面图标 |
+| Windows `.zip` | 便携版，完整解压后运行应用；个人数据仍保存到独立数据目录 |
+| 源码 ZIP | 用于开发与构建，不是桌面安装包 |
 
 需要 macOS 13+。当前本机验证目标为 Apple Silicon（arm64）。安装包是本地 ad-hoc 签名预览版时，跨电脑下载可能被系统拦截；面向公众发布需完成 Developer ID 签名与公证。
+
+Windows 版本针对 **10.0.17763.379（Windows 10 1809）** 的系统能力设计，使用系统 .NET Framework 4.7.2 和 Microsoft Edge WebView2。旧系统可能没有 WebView2，应用会提供官方安装入口。GitHub 的 Windows 构建与验收使用较新的系统，**不等于在 17763.379 真机上通过测试**。具体依赖、安装和排查步骤见 [Windows 使用说明](docs/WINDOWS.md)。
 
 安装后应用位于 `~/Applications/星栖小镇.app`。红叉隐藏窗口；菜单「退出星栖小镇」或 `⌘Q` 完整退出。更新时运行新版安装器，个人资料与聊天保留。桌面图标是应用的符号链接，删图标不会删应用或数据。
 
@@ -54,6 +57,7 @@ python3 -m unittest discover -s tests -v
 ## 文档
 
 - [使用说明](使用说明.md)（日常）
+- [Windows 安装与旧系统兼容性](docs/WINDOWS.md)
 - [架构](docs/ARCHITECTURE.md) · [皮肤](docs/SKINS.md) · [团队台账](docs/TEAM_DATA.md)
 - [发布](docs/RELEASING.md) · [GitHub 用法](docs/GITHUB_USAGE.md)
 - [CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md)
