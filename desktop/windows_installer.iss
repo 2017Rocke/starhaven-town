@@ -75,4 +75,4 @@ begin
     WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
       '本机可能尚未安装 Microsoft Edge WebView2 运行时。首次打开小镇会提供微软官方下载入口，请安装 Evergreen Standalone Installer 的 x64 版本后重新打开。';
 end;
-; No uninstall-delete rule touches %LOCALAPPDATA%\StarhavenTown.
+// No uninstall-delete rule touches %LOCALAPPDATA%\StarhavenTown.
