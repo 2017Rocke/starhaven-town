@@ -90,3 +90,11 @@ jobs:
         with:
           name: starhaven-windows-x64
           path: dist/*
+      - name: Preserve Windows diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: starhaven-windows-diagnostics
+          path: build/windows-test-evidence/*
+          if-no-files-found: ignore
+          retention-days: 7
