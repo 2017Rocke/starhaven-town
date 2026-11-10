@@ -91,7 +91,7 @@ class DesktopGracefulShutdownTest(unittest.TestCase):
             ready = root / "ready.json"
             stop = root / "stop.request"
             runner = Path(__file__).resolve().parents[1] / "desktop_runner.py"
-            process = subprocess.Popen([sys.executable, "-I", "-B", str(runner),
+            process = subprocess.Popen([sys.executable, "-I", "-X", "utf8", "-B", str(runner),
                 "--data-dir", str(root / "用户 数据"), "--ready-file", str(ready),
                 "--stop-file", str(stop), "--parent-pid", str(os.getpid())],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -99,9 +99,11 @@ class DesktopGracefulShutdownTest(unittest.TestCase):
                 mod = load_windows_app()
                 try:
                     mod.wait_ready(ready, process, timeout=20)
-                except RuntimeError:
+                except RuntimeError as exc:
+                    if process.poll() is None:
+                        process.kill()
                     _, error = process.communicate(timeout=5)
-                    self.fail("backend did not start: " + error.decode("utf-8", errors="replace"))
+                    self.fail("backend did not start (%s): %s" % (exc, error.decode("utf-8", errors="replace")))
                 stop.write_text("stop", encoding="utf-8")
                 _, error = process.communicate(timeout=12)
                 self.assertEqual(process.returncode, 0, error)

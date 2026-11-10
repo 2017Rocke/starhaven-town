@@ -13,6 +13,7 @@ import uuid
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import unquote, urlsplit
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -801,6 +802,13 @@ class TownApp:
 class TownServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def server_bind(self):
+        # HTTPServer resolves a reverse DNS name here. This loopback-only app
+        # already knows its host; DNS/network delays must not block startup.
+        TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
     def server_close(self):
         if hasattr(self, "app"):

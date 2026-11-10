@@ -5,13 +5,14 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
-    PLOT_H, PLOT_SLOTS, PLOT_W, TownApp, WORLD_H, WORLD_W, design_house, painted_house,
+    PLOT_H, PLOT_SLOTS, PLOT_W, TownApp, WORLD_H, WORLD_W, create_server, design_house, painted_house,
 )
 
 
@@ -44,6 +45,15 @@ class MapWorldTest(unittest.TestCase):
     def agents(self):
         return {agent["id"]: agent for agent in self.app.state()["agents"]}
 
+    def test_local_map_service_starts_without_hostname_lookup(self):
+        with mock.patch("socket.getfqdn", side_effect=AssertionError("local startup must not resolve DNS")):
+            with create_server(port=0, data_dir=self.data, bridge=OfflineBridge(),
+                               source_dir=self.root / "source", web_dir=self.root / "web",
+                               report_root=self.root / "reports") as server:
+                self.assertEqual(server.server_name, "127.0.0.1")
+                self.assertEqual(server.server_address[0], "127.0.0.1")
+                self.assertGreater(server.server_port, 0)
+
     def test_plots_fit_world_without_overlapping_homes_or_village(self):
         # Full legacy towns must fit, including their two original buildings.
         self.assertEqual(MAX_RESIDENTS, 30)
@@ -63,7 +73,8 @@ class MapWorldTest(unittest.TestCase):
 
     def test_full_legacy_town_migrates_without_losing_profile_or_history(self):
         # Build the pre-map schema independently of the current implementation.
-        with sqlite3.connect(str(self.data / "town.sqlite3")) as db:
+        # SQLite's transaction context does not close the file handle on exit.
+        with closing(sqlite3.connect(str(self.data / "town.sqlite3"))) as db, db:
             db.executescript("""
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
@@ -203,7 +214,7 @@ class MapWorldTest(unittest.TestCase):
         with mock.patch("server.design_house", side_effect=fail_second_house):
             with self.assertRaisesRegex(RuntimeError, "模拟升级中断"):
                 self.start()
-        with sqlite3.connect(str(self.data / "town.sqlite3")) as db:
+        with closing(sqlite3.connect(str(self.data / "town.sqlite3"))) as db:
             self.assertEqual(db.execute("SELECT * FROM agents ORDER BY rowid").fetchall(), original)
         self.start()
         self.assertEqual(len(self.agents()), 4)
