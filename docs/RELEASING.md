@@ -72,4 +72,4 @@ uv run --python 3.12 --no-project python scripts/export_source.py
 
 构建后在独立 Windows 测试账号中执行 `tests/test_windows_integration.py`，设置 `STARHAVEN_WINDOWS_APP` 和 `STARHAVEN_WINDOWS_INSTALLER` 为刚生成的 EXE 路径。测试会创建快捷方式和卸载注册信息，不能在正在使用的小镇账号下随意运行。GitHub 工作流自动完成该检查，分别验证原生窗口、实际地图加载、中文路径、退出清理及安装升级/卸载保留数据。
 
-Windows `10.0.17763.379` 尚未真机验证，现代 Windows 构建成功不能替代该版本验收。依赖、官方依据与旧系统测试清单见 [WINDOWS](WINDOWS.md)。
+上游 1.5.1 提交 `d0715bf` 记录 Windows `10.0.17763.379` 启动自检通过；本次 1.7.0 合并未在该系统复验，完整功能与安装升级仍待验收。现代 Windows 构建成功不能替代该版本验收。依赖、官方依据与旧系统测试清单见 [WINDOWS](WINDOWS.md)。

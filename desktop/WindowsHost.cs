@@ -22,6 +22,10 @@ internal static class Program
     internal static string SelfTestFile;
     internal static string WorkingDataDirectory = DataDirectory;
     internal static int ExitCode;
+    // Non-null when a fixed-version WebView2 runtime ships next to the executable.
+    internal static string BundledRuntimeFolder;
+    internal static int OsBuild;
+    private static bool explicitDataDirectory;
     private static readonly object LogLock = new object();
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -39,7 +43,7 @@ internal static class Program
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--self-test" && i + 1 < args.Length) SelfTestFile = Path.GetFullPath(args[++i]);
-            else if (args[i] == "--data-dir" && i + 1 < args.Length) WorkingDataDirectory = Path.GetFullPath(args[++i]);
+            else if (args[i] == "--data-dir" && i + 1 < args.Length) { WorkingDataDirectory = Path.GetFullPath(args[++i]); explicitDataDirectory = true; }
             else return 2;
         }
         Application.EnableVisualStyles();
@@ -54,10 +58,25 @@ internal static class Program
                 OsVersion os = new OsVersion(); os.Size = (uint)Marshal.SizeOf(os);
                 if (RtlGetVersion(ref os) != 0 || os.Major < 10 || (os.Major == 10 && os.Build < 17763) || !Environment.Is64BitOperatingSystem)
                     throw new InvalidOperationException("此版本需要 64 位 Windows 10 1809（内部版本 17763）或更新的系统。");
-                Directory.CreateDirectory(WorkingDataDirectory);
+                OsBuild = (int)os.Build;
+                if (explicitDataDirectory) Directory.CreateDirectory(WorkingDataDirectory);
+                else if (!IsWritable(WorkingDataDirectory))
+                {
+                    // An existing but unwritable directory does not throw, so probe it.
+                    string portable = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+                    if (!IsWritable(portable))
+                        throw new IOException("找不到可写的数据目录：" + WorkingDataDirectory + " 或 " + portable);
+                    WorkingDataDirectory = portable;
+                }
+                string bundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebView2Runtime");
+                if (File.Exists(Path.Combine(bundled, "msedgewebview2.exe"))) BundledRuntimeFolder = bundled;
                 string runtime;
-                try { runtime = CoreWebView2Environment.GetAvailableBrowserVersionString(); }
-                catch (WebView2RuntimeNotFoundException) { runtime = null; }
+                if (BundledRuntimeFolder != null) runtime = "fixed " + bundled;
+                else
+                {
+                    try { runtime = CoreWebView2Environment.GetAvailableBrowserVersionString(); }
+                    catch (WebView2RuntimeNotFoundException) { runtime = null; }
+                }
                 if (String.IsNullOrEmpty(runtime))
                 {
                     if (SelfTestFile != null) throw new InvalidOperationException("Microsoft Edge WebView2 Runtime is missing.");
@@ -74,9 +93,61 @@ internal static class Program
         return ExitCode;
     }
 
+    // Directory.CreateDirectory succeeds for an existing but unwritable folder,
+    // so the only reliable check is creating and removing a probe file.
+    internal static bool IsWritable(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string probe = Path.Combine(directory, ".write-test-" + Guid.NewGuid().ToString("N"));
+            using (File.Create(probe)) { }
+            File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
+    }
+    // The temp directory can be unusable on locked-down or non-standard accounts;
+    // fall back to the data directory instead of failing to start.
+    internal static string CreateRunDirectory()
+    {
+        try
+        {
+            string temp = Path.Combine(Path.GetTempPath(), "starhaven-win-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            return temp;
+        }
+        catch (Exception exc) { Log("Temp directory unusable: " + exc.Message); }
+        string fallback = Path.Combine(WorkingDataDirectory, "run-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fallback);
+        return fallback;
+    }
     internal static void OpenExternal(string path)
     {
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+    // Optional per-machine compatibility switch: a webview2-args.txt next to the
+    // executable is passed to the Chromium host as additional browser arguments.
+    // Windows 10 1809 (17763) cannot start the renderer sandbox, so it defaults to
+    // the no-sandbox host there; create the file to override that choice.
+    internal static CoreWebView2EnvironmentOptions BrowserOptions()
+    {
+        string extra = ReadArgumentsFile();
+        if (extra == null && OsBuild > 0 && OsBuild <= 17763) extra = TownWindow.NoSandbox;
+        if (extra == null) return null;
+        Log("WebView2 extra arguments: " + extra);
+        return new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = extra };
+    }
+    private static string ReadArgumentsFile()
+    {
+        try
+        {
+            string file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "webview2-args.txt");
+            if (!File.Exists(file)) return null;
+            string extra = File.ReadAllText(file, Encoding.UTF8).Trim();
+            return extra.Length == 0 ? null : extra;
+        }
+        catch (Exception exc) { Log("Browser options: " + exc.Message); return null; }
     }
     internal static void Log(string text)
     {
@@ -117,8 +188,10 @@ internal static class Program
 
 internal sealed class TownWindow : Form
 {
-    private readonly WebView2 browser = new WebView2();
     private readonly Label status = new Label();
+    // The control is replaced when the first initialisation fails.
+    private WebView2 browser = new WebView2();
+    internal const string NoSandbox = "--no-sandbox";
     private readonly CancellationTokenSource closing = new CancellationTokenSource();
     private readonly System.Windows.Forms.Timer health = new System.Windows.Forms.Timer();
     private Process backend;
@@ -153,8 +226,7 @@ internal sealed class TownWindow : Form
             string python = Path.Combine(backendDir, "runtime", "python.exe");
             string runner = Path.Combine(backendDir, "desktop_runner.py");
             if (!File.Exists(python) || !File.Exists(runner)) throw new FileNotFoundException("安装包不完整，请重新下载安装。");
-            readyDirectory = Path.Combine(Path.GetTempPath(), "starhaven-win-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(readyDirectory);
+            readyDirectory = Program.CreateRunDirectory();
             string ready = Path.Combine(readyDirectory, "ready.json");
             var start = new ProcessStartInfo(python, "-I -X utf8 -B " + Program.Quote(runner) + " --data-dir " + Program.Quote(Program.WorkingDataDirectory) + " --ready-file " + Program.Quote(ready) + " --parent-pid " + Process.GetCurrentProcess().Id + " --stop-file " + Program.Quote(Path.Combine(readyDirectory, "stop.request")));
             start.WorkingDirectory = backendDir; start.UseShellExecute = false; start.CreateNoWindow = true;
@@ -177,11 +249,7 @@ internal sealed class TownWindow : Form
             }
             if (port < 1 || port > 65535) throw new TimeoutException("小镇服务启动超时。");
             origin = new Uri("http://127.0.0.1:" + port + "/");
-            var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Program.WorkingDataDirectory, "WebView2"));
-            closing.Token.ThrowIfCancellationRequested();
-            await browser.EnsureCoreWebView2Async(environment);
-            browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            await InitBrowser(Program.BrowserOptions());
             if (Program.SelfTestFile != null)
                 await browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__starhavenTestErrors=[]; window.addEventListener('error',function(e){window.__starhavenTestErrors.push(e.message||'resource error')}); window.addEventListener('unhandledrejection',function(e){window.__starhavenTestErrors.push(String(e.reason))});");
             browser.CoreWebView2.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
@@ -219,6 +287,34 @@ internal sealed class TownWindow : Form
         }
         catch (OperationCanceledException) { }
         catch (Exception exc) { if (!closing.IsCancellationRequested) { Program.Fail(exc); Close(); } }
+    }
+    // Chromium's renderer sandbox cannot start on some Windows 10 builds and
+    // locked-down accounts: the controller request fails with an invalid window
+    // handle. Retry once without the sandbox instead of refusing to launch.
+    private async Task InitBrowser(CoreWebView2EnvironmentOptions options)
+    {
+        Exception failure = null;
+        try { await CreateController(options); }
+        catch (Exception exc) { failure = exc; }
+        if (failure != null)
+        {
+            bool alreadyOff = options != null && options.AdditionalBrowserArguments == NoSandbox;
+            if (alreadyOff) throw failure;
+            Program.Log("WebView2 初始化失败，改用兼容模式重试：" + failure.Message);
+            browser.Dispose(); Controls.Remove(browser);
+            browser = new WebView2(); browser.Dock = DockStyle.Fill;
+            Controls.Add(browser); browser.BringToFront();
+            await CreateController(new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = NoSandbox });
+        }
+        browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
+        browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+    }
+    private async Task CreateController(CoreWebView2EnvironmentOptions options)
+    {
+        var environment = await CoreWebView2Environment.CreateAsync(
+            Program.BundledRuntimeFolder, Path.Combine(Program.WorkingDataDirectory, "WebView2"), options);
+        closing.Token.ThrowIfCancellationRequested();
+        await browser.EnsureCoreWebView2Async(environment);
     }
     protected override void OnFormClosed(FormClosedEventArgs e)
     {

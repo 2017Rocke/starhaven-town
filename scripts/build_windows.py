@@ -128,8 +128,12 @@ def write_launcher(package: Path):
         "旧系统未必自带 WebView2；首次启动会提供微软官方安装入口。选 Evergreen Standalone Installer x64。\n"
         "https://developer.microsoft.com/microsoft-edge/webview2/#download-section\n"
         "AI 对话请在「小镇设置」连接自己的模型服务；密钥保存在 Windows 凭据管理器。\n"
-        "数据：%LOCALAPPDATA%\\StarhavenTown（菜单可打开）。升级与卸载保留此目录。\n"
-        "Windows 10.0.17763.379 尚未真机验证。微软支持要求安装适用累计更新；古老补丁可能影响运行时安装与 HTTPS。\n"
+        "数据默认在 %LOCALAPPDATA%\\StarhavenTown，不可写时回退到程序旁的 data 文件夹；菜单可打开实际目录。\n"
+        "升级与卸载保留用户数据；便携版换目录前请备份，回退目录里的数据不会自动迁移。\n"
+        "1809 默认使用 --no-sandbox 兼容模式，会关闭浏览器进程沙箱；较新系统初始化失败时也会尝试该模式。\n"
+        "支持使用程序旁 WebView2Runtime 文件夹内的固定版运行时，本安装包默认不包含该目录。\n"
+        "上游 1.5.1 记录 Windows 10.0.17763.379 启动自检通过；1.7.0 完整功能与安装升级尚待该系统验收。\n"
+        "微软支持要求安装适用累计更新；古老补丁可能影响运行时安装与 HTTPS。\n"
         "当前 EXE 尚未代码签名，系统可能显示未知发布者；请从官方 GitHub Releases 下载。\n",
         encoding="utf-8-sig",
     )
