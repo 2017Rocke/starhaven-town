@@ -74,6 +74,28 @@ class TownFixture(unittest.TestCase):
         return self.app.chat(dict(agent_id=agent, request_id=request, message=message))["job_id"]
 
 class TownTest(TownFixture):
+    def test_scout_default_profile_upgrade_preserves_custom_character_fields(self):
+        from server import LEGACY_SCOUT_BIO, LEGACY_SCOUT_ROLE
+        with self.app.db() as db:
+            db.execute("UPDATE agents SET role=?,bio=?,name=?,personality=?,avatar=?,memories=? WHERE id='scout'",
+                       (LEGACY_SCOUT_ROLE, LEGACY_SCOUT_BIO, "自选名字", "自定义个性", "artist", '["保留旧记忆"]'))
+        self.app.close()
+        self.app = TownApp(self.root / "data", self.bridge, self.source, self.web, self.reports)
+        scout = next(agent for agent in self.app.state()["agents"] if agent["id"] == "scout")
+        self.assertEqual(scout["role"], "开源项目研究员 · 采集员")
+        self.assertIn("材料架", scout["bio"])
+        self.assertEqual((scout["name"], scout["personality"], scout["avatar"], scout["memories"]),
+                         ("自选名字", "自定义个性", "artist", ["保留旧记忆"]))
+        self.app.patch_agent("scout", {"bio": "用户自己填写的故事"})
+        self.app.close()
+        self.app = TownApp(self.root / "data", self.bridge, self.source, self.web, self.reports)
+        scout = next(agent for agent in self.app.state()["agents"] if agent["id"] == "scout")
+        self.assertEqual(scout["bio"], "用户自己填写的故事")
+        prompt = self.app.prompt("scout")
+        data = json.loads(prompt.split("<town_data>\n", 1)[1].split("\n</town_data>", 1)[0])
+        self.assertEqual(data["collection_desk"]["materials"], 0)
+        self.assertNotIn("readme", data["collection_desk"])
+
     def test_skin_preference_survives_restart_and_rejects_unregistered_paths(self):
         skins = self.web / "skins"
         skins.mkdir()
@@ -173,7 +195,7 @@ class TownTest(TownFixture):
         job = self.send(agent="scout", request="scout-1")
         self.done(job)
         prompt = self.bridge.prompts[-1]
-        self.assertIn('"authorized_role": "开源项目研究员"', prompt)
+        self.assertIn('"authorized_role": "开源项目研究员 · 采集员"', prompt)
         self.assertIn("喜欢通俗的例子", prompt)
         self.assertIn("没有派单", prompt)
         self.assertEqual(self.app.state()["agents"][1]["memories"], ["喜欢通俗的例子"])

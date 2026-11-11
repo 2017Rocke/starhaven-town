@@ -115,7 +115,7 @@ def main():
     resources = app / "Contents" / "Resources"
     backend = resources / "backend"
     backend.mkdir()
-    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "VERSION"):
+    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "scout_workshop.py", "scout_collect.py", "scout_scan.py", "VERSION"):
         shutil.copy2(ROOT / name, backend / name)
     shutil.copytree(ROOT / "web", backend / "web")
     copy_runtime(args.python_runtime.resolve(), backend / "runtime")

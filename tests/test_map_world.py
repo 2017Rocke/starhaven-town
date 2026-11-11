@@ -12,7 +12,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
-    PLOT_H, PLOT_SLOTS, PLOT_W, TownApp, WORLD_H, WORLD_W, create_server, design_house, painted_house,
+    PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W,
+    create_server, design_house, painted_house,
 )
 
 
@@ -179,6 +180,112 @@ class MapWorldTest(unittest.TestCase):
         reopened = self.agents()[resident["id"]]
         self.assertEqual(reopened["house"], updated["house"])
         self.assertEqual(reopened["memories"], ["保留我的约定"])
+
+    def test_profession_and_interests_produce_distinct_combined_homes(self):
+        examples = [
+            ("开发工程师", "解释逻辑，迭代开发和测试，代码简洁，工具分类整齐", "喜欢摇滚节奏",
+             "workshop", "music", "节拍工坊"),
+            ("架构工程师", "重构系统，研究大脑构造和股票短线", "研究底层逻辑与软件架构",
+             "architecture", "finance", "蓝图研舍"),
+            ("养鸡、教学、突发处理", "温柔、直接、有耐心", "了解鸡的各阶段需求与健康",
+             "farm", "poultry", "暖羽鸡舍"),
+        ]
+        for role, personality, bio, style, motif, label in examples:
+            with self.subTest(role=role):
+                house = design_house("stable-id", "测试伙伴", role, personality, bio, "#abc123")
+                self.assertEqual((house["style"], house["motif"], house["label"]), (style, motif, label))
+                self.assertEqual(house["name"], "测试伙伴的" + label)
+                self.assertTrue(house["feature"])
+                renamed = design_house("stable-id", "另一位伙伴", role, personality, bio, "#abc123")
+                self.assertEqual({key: value for key, value in house.items() if key != "name"},
+                                 {key: value for key, value in renamed.items() if key != "name"})
+
+    def test_profession_remains_primary_and_all_nine_styles_are_available(self):
+        roles = {"主管": "command", "软件架构工程师": "architecture", "开发工程师": "workshop",
+                 "园艺师": "farm", "音乐人": "music", "股票分析师": "finance",
+                 "教学老师": "school", "开源研究员": "observatory"}
+        for role, style in roles.items():
+            with self.subTest(role=role):
+                house = design_house("resident", "伙伴", role,
+                                     "股票金融投资交易理财基金行情证券，喜欢音乐摇滚乐队乐器节奏",
+                                     "爱研究底层系统、代码、农场与教学", "#abcdef")
+                self.assertEqual(house["style"], style)
+        home = design_house("resident", "伙伴", "小镇伙伴", "友善", "喜欢散步", "#abcdef")
+        self.assertEqual((home["style"], home["motif"]), ("cottage", "none"))
+
+    def test_house_motif_updates_on_edit_and_migration_without_moving(self):
+        self.start()
+        resident = self.app.add_agent({"name": "编曲伙伴", "role": "开发工程师", "bio": "喜欢摇滚"})["agent"]
+        self.assertEqual(resident["house"]["label"], "节拍工坊")
+        updated = self.app.patch_agent(resident["id"], {"bio": "喜欢股票行情与短线研究"})["agent"]
+        self.assertEqual((updated["house"]["style"], updated["house"]["motif"]), ("workshop", "finance"))
+        self.assertEqual(updated["plot"], resident["plot"])
+        with self.app.db() as db:
+            # Simulate a pre-personalization home saved by an older app version.
+            db.execute("UPDATE agents SET house=?,home=? WHERE id=?",
+                       ('{"style":"music","name":"旧屋"}', "旧屋", resident["id"]))
+        self.start()
+        migrated = self.agents()[resident["id"]]
+        self.assertEqual(migrated["house"], updated["house"])
+        self.assertEqual(migrated["plot"], resident["plot"])
+
+    def test_avatar_edit_is_persistent_without_changing_permissions_or_records(self):
+        self.start()
+        resident = self.app.add_agent({"name": "换装伙伴", "role": "开发工程师", "avatar": "maker", "color": "#123abc"})["agent"]
+        self.app.patch_agent(resident["id"], {"memories": ["保留这条约定"]})
+        with self.app.db() as db:
+            db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (
+                "avatar-history", resident["id"], "user", "早先的对话", "sent", "2026-11-09"))
+        before_messages = self.app.messages(resident["id"])
+        for avatar in sorted(SUPPORTED_AVATARS):
+            with self.subTest(avatar=avatar):
+                updated = self.app.patch_agent(resident["id"], {"avatar": avatar})["agent"]
+                self.assertEqual(updated["avatar"], avatar)
+                self.assertEqual(updated["color"], resident["color"])
+                self.assertEqual(updated["role"], resident["role"])
+                self.assertEqual(updated["plot"], resident["plot"])
+                self.assertEqual(updated["house"], resident["house"])
+                self.assertEqual(updated["memories"], ["保留这条约定"])
+                self.assertEqual(self.app.messages(resident["id"]), before_messages)
+        self.app.patch_agent(resident["id"], {"avatar": "engineer"})
+        self.start()
+        self.assertEqual(self.agents()[resident["id"]]["avatar"], "engineer")
+        self.assertEqual(self.app.messages(resident["id"]), before_messages)
+        with self.assertRaises(APIError):
+            self.app.patch_agent(resident["id"], {"avatar": "captain", "role": "主管"})
+        self.assertEqual(self.agents()[resident["id"]]["avatar"], "engineer")
+
+    def test_new_avatars_are_available_on_creation_and_invalid_edits_are_atomic(self):
+        self.start()
+        for avatar in ("engineer", "musician", "architect", "rancher", "scholar", "artist"):
+            self.assertEqual(self.app.add_agent({"name": avatar, "avatar": avatar})["agent"]["avatar"], avatar)
+        resident = self.app.add_agent({"name": "原名字"})["agent"]
+        count = len(self.agents())
+        for invalid in ("unknown", "../captain", "Captain", "", None, 42, ["engineer"]):
+            with self.subTest(avatar=invalid):
+                with self.assertRaises(APIError) as error:
+                    self.app.patch_agent(resident["id"], {"name": "不应保存", "avatar": invalid})
+                self.assertEqual(error.exception.code, 400)
+                self.assertEqual(self.agents()[resident["id"]]["name"], "原名字")
+                with self.assertRaises(APIError):
+                    self.app.add_agent({"name": "不应创建", "avatar": invalid})
+                self.assertEqual(len(self.agents()), count)
+
+    def test_unknown_legacy_avatar_falls_back_without_overwriting_saved_value(self):
+        self.start()
+        resident = self.app.add_agent({"name": "老伙伴"})["agent"]
+        with self.app.db() as db:
+            db.execute("UPDATE agents SET avatar='legacy-custom-look' WHERE id=?", (resident["id"],))
+        self.start()
+        self.assertEqual(self.agents()[resident["id"]]["avatar"], "resident")
+        self.app.patch_agent(resident["id"], {"name": "老朋友", "memories": ["过去的故事"]})
+        with self.app.db() as db:
+            stored = db.execute("SELECT avatar,name,memories FROM agents WHERE id=?", (resident["id"],)).fetchone()
+            self.assertEqual(tuple(stored), ("legacy-custom-look", "老朋友", '["过去的故事"]'))
+        self.assertEqual(self.app.patch_agent(resident["id"], {"avatar": "artist"})["agent"]["avatar"], "artist")
+        self.start()
+        self.assertEqual(self.agents()[resident["id"]]["avatar"], "artist")
+        self.assertEqual(self.agents()[resident["id"]]["memories"], ["过去的故事"])
 
     def test_original_buildings_remain_in_village_after_profile_edits(self):
         self.start()

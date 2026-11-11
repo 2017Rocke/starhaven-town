@@ -162,7 +162,7 @@ def build_package(runtime_src: Path, output_dir: Path, version: str) -> Path:
     package = build / f"{APP_NAME}-{version}-windows-x64"
     backend = package / "backend"
     backend.mkdir(parents=True)
-    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "VERSION"):
+    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "scout_workshop.py", "scout_collect.py", "scout_scan.py", "VERSION"):
         shutil.copy2(ROOT / name, backend / name)
     shutil.copytree(ROOT / "web", backend / "web")
     for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):

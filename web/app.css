@@ -55,6 +55,24 @@
 @media(max-width:560px){.map-caption{left:10px;top:12px;padding:8px;font-size:9px}.map-coordinate{display:none}.map-tip{left:9px;bottom:12px;max-width:calc(100% - 125px);font-size:8px;padding:6px;gap:5px}.map-home{right:10px;bottom:12px;font-size:9px;padding:8px}.map-compass{right:20px;bottom:58px}}
 
 
+/* The wardrobe uses the same small pixel silhouettes as residents on the map. */
+.profile-home{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px 11px;margin:0 0 14px;border:1px solid var(--line);background:var(--surface);text-align:left}
+.profile-home:hover{border-color:var(--green)}
+.profile-home-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.profile-home-copy strong{font-size:11px;font-weight:500;line-height:1.5;color:var(--green-dark)}
+.profile-home-copy small{font-size:10px;line-height:1.6;color:var(--muted)}
+.profile-home>svg{width:15px;height:15px;color:var(--muted)}
+.plot .map-resident.selected:not(:hover):not(:focus-visible) .resident-bubble{opacity:0;visibility:hidden}
+.avatar-picker{display:block;min-width:0;margin:0 0 20px}
+.avatar-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px 8px}
+.avatar-picker .avatar-choice{display:flex;min-width:0;flex-direction:column;align-items:center;text-align:center}
+.avatar-picker .avatar-choice input{inset:0;z-index:1;cursor:pointer}
+.avatar-picker .avatar-choice img{width:100%;height:80px;object-fit:contain;padding:8px 5px;background:var(--surface);border:2px solid var(--line)}
+.avatar-choice>span{font-size:10px;line-height:1.5;margin-top:6px;color:var(--muted);white-space:nowrap}
+.avatar-picker input:checked+img{border-color:var(--green);background:var(--mint);box-shadow:0 3px 0 var(--shadow)}
+.avatar-picker input:checked~span{color:var(--green-dark);font-weight:600}
+.avatar-help{font-size:10px;line-height:1.7;color:var(--muted);margin:12px 0 0}
+@media(max-width:430px){.avatar-options{grid-template-columns:repeat(4,minmax(0,1fr))}.avatar-picker .avatar-choice img{height:72px}.avatar-choice>span{font-size:10px}}
 /* Small viewports keep labels on the resident being visited, avoiding overlapping plots. */
 @media(max-width:560px){
   .plot:not(.selected) .building-label,.plot:not(.selected) .map-name{visibility:hidden}

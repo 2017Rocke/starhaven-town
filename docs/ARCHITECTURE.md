@@ -13,6 +13,9 @@ flowchart LR
     Web --> Server
     Server --> DB[(SQLite 居民与聊天)]
     Server --> Ledger[只读团队台账与报告]
+    Server --> Scout[星探采集工作区]
+    Scout --> GitHub[GitHub 公开元数据与源码]
+    Scout --> Materials[(独立材料库与源码快照)]
     Server --> Bridge[ProviderBridge]
     Bridge --> API[用户配置的模型 API]
     Bridge --> Codex[可选：本机 Codex CLI]
@@ -35,6 +38,10 @@ flowchart LR
 | `credential_store.py` | macOS 钥匙串访问；非桌面调试场景可读环境变量密钥 |
 | `model_bridge.py` | 可选的本机 Codex 文本对话连接，关闭工具和外部执行能力 |
 | `web/` | 小镇、角色、聊天、任务板、成长册与设置页面 |
+| `web/house-art.js` | 九类像素住宅与职业院落，依据后端的主风格和兴趣装饰组合绘制 |
+| `scout_workshop.py` | 星探材料库、持久化采集任务、全历史去重、已有研究导入与每日安排 |
+| `scout_collect.py` / `scout_scan.py` | 有大小上限的公开 GitHub 采集、固定源码、脱敏静态初筛；不运行第三方代码 |
+| `web/scout-workspace.js` / `web/scout-art.js` | 观察站交互、按真实状态展示的院落与室内像素场景 |
 | `web/skins/` | 皮肤清单、样式与新皮肤模板 |
 | `desktop/WindowsHost.cs` | Windows 原生窗口、WebView2、单实例、后端与子进程生命周期 |
 | `desktop/windows_installer.iss` | 每用户安装、桌面快捷方式、覆盖升级与卸载保留数据 |
@@ -64,6 +71,7 @@ flowchart LR
 ├── town.sqlite3       # 居民、独立聊天、明确记忆、对话任务与偏好
 ├── provider.json      # 连接方式、API 基础地址、模型名称；不含密钥
 ├── settings.json      # 用户显式连接的团队目录
+├── scout-workshop/    # 真实采集任务、材料账本与不可信源码快照
 ├── runtime/           # 可选 Codex 对话的临时工作目录
 └── logs/              # 桌面服务诊断日志
 ```
@@ -80,6 +88,8 @@ macOS API 密钥写入系统钥匙串，Windows 写入凭据管理器，均按�
 
 团队集成读取用户指定的 `config.json`、`state.json` 和研究报告。任务验收与能力改进以真实台账证据为依据，聊天次数与陪伴天数不算能力升级。小镇当前不会通过这些入口改写台账、派单、发布成果或启动每周督办。
 
+星探的观察站拥有独立的公开项目采集入口：有限候选发现、固定提交下载、静态初筛、原子材料入库。界面轮询真实作业状态；每日任务默认关闭，由应用内开关控制，退出应用后不执行。已有研究材料可以只读登记，不覆盖来源文件。原始源码不会自动附加给聊天模型；聊天近况只使用受限的数量和阶段摘要。材料及采集不构成研究验收，现阶段没有居民自动交接或执行第三方 Skill 的能力。
+
 发送消息时，后端整理角色资料、明确记忆、受限长度的本角色历史及允许读取的工作摘要，再交给模型桥接层。API 模式调用用户填写的 OpenAI 兼容 `chat/completions` 服务，模型名称由用户指定；Codex 模式沿用用户自己的本机配置。角色对话不附带工具、Shell 或外部调度权限。
 
 角色上下文会发往用户选择的模型服务，并受其网络、账户和费用条件影响。本机可离线展示地图、编辑资料和读取已保存记录；新的 AI 回复需要可用的本地模型或远程服务。取消会停止本机等待并尽可能关闭连接，不能撤回模型服务已经收到的请求。
@@ -90,6 +100,7 @@ HTTP 服务只监听本机，校验 Host、Origin 与写入请求标识；模型
 
 - **皮肤和像素素材**：先扩展 `web/skins/manifest.json` 与对应 CSS；规则见 [SKINS.md](SKINS.md)。地图、头像素材位于 `web/assets/`。皮肤当前不执行插件脚本。
 - **角色和玩法**：页面交互从 `web/app.js` 开始，持久化规则与校验放入 `server.py`。可见等级、奖励和成长要说明真实来源，不能把演示数据当已完成成果。
+- **住宅和居民形象**：`server.py` 的住宅设计函数先匹配职业主体，再确定兴趣装饰；`web/house-art.js` 使用统一像素网格绘制房屋与院落。头像素材位于 `web/assets/`，新增形象需同步前端选项与后端允许列表。角色档案支持换装；更新外观不移动住处或改写角色权限。
 - **新的模型服务**：优先扩展 `provider_bridge.py`，保持 `probe / generate / close` 接口以及取消、错误脱敏、密钥隔离的约定。
 - **团队协作与周计划**：另建工作执行与调度层，显式管理授权、依赖、交接与验收，再通过受限接口提供给小镇。当前文本对话层不承担实际执行。
 - **桌面体验与更新**：在 `desktop/` 扩展原生行为。跨启动偏好应落到稳定的用户数据存储；随机端口会改变浏览器 origin，不能只依赖该 origin 的 `localStorage` 保证桌面持久化。

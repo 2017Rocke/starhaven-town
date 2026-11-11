@@ -15,6 +15,7 @@
     chatErrors: new Map(),
     dialogMode: "edit",
     dialogAgent: null,
+    dialogAvatar: null,
     toastTimer: null,
     stateLoading: false,
     skins: [],
@@ -28,7 +29,20 @@
     settingsSaving: false,
     modelSettings: null,
   };
-  const avatarFiles = new Set(["captain", "scout", "maker", "gardener"]);
+  const avatarChoices = [
+    { id: "captain", name: "领航队长", color: "#71896a" },
+    { id: "scout", name: "旅行研究员", color: "#c5a16f" },
+    { id: "maker", name: "手作匠人", color: "#8ba198" },
+    { id: "gardener", name: "花园伙伴", color: "#a1b782" },
+    { id: "engineer", name: "代码工程师", color: "#718ba1" },
+    { id: "musician", name: "摇滚乐手", color: "#a08baf" },
+    { id: "architect", name: "蓝图建筑师", color: "#8ba6a6" },
+    { id: "rancher", name: "牧场伙伴", color: "#b99d69" },
+    { id: "scholar", name: "书卷学者", color: "#a297b5" },
+    { id: "artist", name: "田园画家", color: "#bc947d" },
+  ];
+  const avatarFiles = new Set(avatarChoices.map(choice => choice.id));
+  const chosenAvatar = agent => avatarFiles.has(agent?.avatar) ? agent.avatar : agent?.id === "scout" ? "scout" : "captain";
   const draftKey = id => `starhaven:draft:${id}`;
   const number = value => Math.max(0, Number(value) || 0);
   const currentAgent = () => ui.state?.agents?.find(agent => agent.id === ui.selected);
@@ -53,7 +67,7 @@
 
   function avatar(agent, className = "") {
     const image = el("img", className);
-    const chosen = avatarFiles.has(agent.avatar) ? agent.avatar : agent.id === "scout" ? "scout" : "captain";
+    const chosen = chosenAvatar(agent);
     image.src = `/assets/${chosen}.svg`;
     image.alt = `${agent.name}的像素形象`;
     return image;
@@ -312,7 +326,7 @@
   }
 
   function showView(name) {
-    if (!["town", "tasks", "growth"].includes(name)) return;
+    if (!["town", "scout", "tasks", "growth"].includes(name)) return;
     ui.view = name;
     $$("[data-view]").forEach(button => {
       const selected = button.dataset.view === name;
@@ -326,6 +340,10 @@
       applyMapTransform();
     }
     history.replaceState(null, "", `#${name}`);
+    if (name === "scout") {
+      window.StarhavenScoutWorkspace?.refresh();
+      if (ui.state && ui.selected !== "scout" && ui.state.agents.some(agent => agent.id === "scout")) selectAgent("scout");
+    }
     if (window.innerWidth <= 800) $(".main-content").scrollIntoView({ behavior: reducedMotion() ? "instant" : "smooth" });
   }
 
@@ -350,6 +368,7 @@
       ui.state = data;
       restoreSavedSkin();
       const previous = ui.selected;
+      if (initial && ui.view === "scout" && data.agents.some(agent => agent.id === "scout")) ui.selected = "scout";
       if (!data.agents.some(agent => agent.id === ui.selected)) {
         ui.selected = data.agents.some(agent => agent.id === data.selected_agent_id) ? data.selected_agent_id : data.agents[0]?.id || null;
       }
@@ -431,7 +450,15 @@
     top.append(portrait, details);
     const status = el("div", "profile-status");
     status.append(el("span", "tiny-dot"), el("span", "", agent.work_status || "随时听听你的新想法"));
-    container.replaceChildren(top, el("p", "profile-personality", agent.personality || agent.bio || "每次相处，都多了解彼此一点。"), status);
+    const home = el("button", "profile-home");
+    home.type = "button";
+    home.setAttribute("aria-label", `前往${agent.house?.name || agent.home || "伙伴的家"}`);
+    const homeCopy = el("span", "profile-home-copy");
+    homeCopy.append(el("strong", "", agent.house?.name || agent.home || "伙伴的家"));
+    if (agent.house?.feature) homeCopy.append(el("small", "", agent.house.feature));
+    home.append(homeCopy, icon("arrow"));
+    home.addEventListener("click", () => { if (agent.id === "scout") showView("scout"); else { showView("town"); revealResident(agent.id); } });
+    container.replaceChildren(top, el("p", "profile-personality", agent.personality || agent.bio || "每次相处，都多了解彼此一点。"), home, status);
     $("#conversation-title").textContent = `和${agent.name}聊聊`;
     $("#edit-profile").disabled = agent.editable === false;
     $("#chat-input").placeholder = `告诉${agent.name}，你在想什么…`;
@@ -531,111 +558,12 @@
     svg.append(pixelTree(variant % 2 ? 278 : 38, 64, variant));
     const house = houseArtGroup(agent);
     house.setAttribute("transform", "translate(40 18)");
-    svg.append(house, pixelFence(24, 205, 102), pixelFence(202, 205, 94));
-    svg.append(pixelShrub(variant % 2 ? 25 : 254, 170));
-    for (let i = 0; i < 6; i++) svg.append(pixelFlower(28 + i * 13, 190 + (i % 2) * 5, ["#ddaf8a", "#dcc38a", "#b8adc0"][i % 3]));
-    // Mailbox, stepping stones and a little crate make the lot feel inhabited.
-    svg.append(pixelRect(220, 189, 4, 20, "#a18b64"), pixelRect(214, 180, 16, 12, "#b79973"), pixelRect(214, 180, 16, 3, "#d4bd92"), pixelRect(218, 185, 8, 2, "#827555"));
+    svg.append(house, window.StarhavenHouseArt.yard(agent));
     return svg;
   }
 
   function houseArtGroup(agent) {
-    const house = svgNode("g");
-    const source = agent.house?.palette || {};
-    const getColor = (key, fallback) => /^#[0-9a-f]{6}$/i.test(source[key] || "") ? source[key] : fallback;
-    const wall = getColor("wall", "#e5dcbe"), roof = getColor("roof", "#bb8964"), trim = getColor("trim", "#9e6b4e");
-    const accent = shade(getColor("accent", "#b49170"), .2);
-    const variant = (agent.house?.variant || 0) % 4;
-    const style = agent.house?.style || "cottage";
-    const put = (...nodes) => house.append(...nodes);
-    const block = (x, y, w, h, color = wall) => {
-      put(pixelRect(x, y, w, h, color), pixelRect(x + w - 12, y, 12, h, shade(color, -.18)),
-        pixelRect(x, y, w, 5, shade(color, -.17)), pixelRect(x + 4, y + 7, w - 20, 3, shade(color, .21)),
-        pixelRect(x - 4, y + h - 7, w + 8, 8, "#bba985"), pixelRect(x - 4, y + h, w + 8, 4, "#a89b76"));
-      for (let row = y + 20; row < y + h - 8; row += 13) {
-        put(pixelRect(x + 4, row, w - 20, 2, shade(color, -.12)));
-        for (let col = x + 12 + ((row - y) % 2) * 18; col < x + w - 20; col += 34) put(pixelRect(col, row - 10, 2, 9, shade(color, -.08)));
-      }
-      put(pixelRect(x + 4, y + 5, 5, h - 12, shade(trim, .2)), pixelRect(x + w - 19, y + 5, 5, h - 12, trim));
-    };
-    // Eight-pixel roof steps are explicit geometry, including the school bell roof.
-    const roofAt = (x, y, width, rows, color = roof) => {
-      for (let row = 0; row < rows; row++) {
-        const inset = (rows - row - 1) * 8;
-        const rx = x + inset, ry = y + row * 8, rw = width - inset * 2;
-        if (rw < 8) continue;
-        put(pixelRect(rx, ry, rw, 8, shade(color, row % 2 ? -.04 : .07)), pixelRect(rx, ry, rw, 2, shade(color, .22)));
-        for (let tile = rx + 7 + (row % 2) * 9; tile < rx + rw - 3; tile += 18) put(pixelRect(tile, ry + 2, 2, 6, shade(color, -.16)));
-        put(pixelRect(rx + rw - 6, ry + 2, 6, 6, shade(color, -.2)));
-      }
-      put(pixelRect(x - 4, y + rows * 8, width + 8, 5, shade(color, -.25)), pixelRect(x, y + rows * 8 + 5, width, 4, shade(trim, -.2)));
-    };
-    const windowAt = (x, y, width = 25, height = 29) => {
-      put(pixelRect(x - 3, y - 3, width + 6, height + 6, trim), pixelRect(x, y, width, height, "#b7c9c1"),
-        pixelRect(x + 3, y + 3, width - 6, height - 6, "#e6e7c9"), pixelRect(x + 3, y + 3, width - 6, 7, "#f2edcf"),
-        pixelRect(x + Math.floor(width / 2) - 1, y, 3, height, shade(trim, .25)), pixelRect(x, y + Math.floor(height / 2), width, 3, shade(trim, .25)),
-        pixelRect(x - 5, y + height + 3, width + 10, 4, shade(trim, -.08)), pixelRect(x - 5, y + height + 3, width + 10, 2, shade(trim, .3)));
-    };
-    const doorAt = (x, y, width = 31, height = 45) => {
-      put(pixelRect(x - 3, y - 3, width + 6, height + 3, trim), pixelRect(x, y, width, height, shade(trim, -.24)),
-        pixelRect(x + 3, y + 3, width - 6, height - 3, shade(trim, .1)));
-      for (let dx = 9; dx < width - 2; dx += 8) put(pixelRect(x + dx, y + 3, 2, height - 3, shade(trim, -.18)));
-      put(pixelRect(x + 7, y + 6, width - 14, 10, "#d8d5b6"), pixelRect(x + width - 7, y + 29, 3, 3, "#e1c58b"),
-        pixelRect(x - 6, y + height, width + 12, 5, "#d5c8a4"), pixelRect(x - 10, y + height + 5, width + 20, 5, "#b8ab86"));
-    };
-    const sign = (x, y, kind) => {
-      put(pixelRect(x + 18, y + 25, 4, 13, trim), pixelRect(x, y, 42, 28, shade(trim, -.04)), pixelRect(x + 3, y + 3, 36, 22, "#eee0bd"), pixelRect(x + 3, y + 24, 36, 3, shade(trim, .3)));
-      if (kind === "music") put(pixelRect(x + 23, y + 7, 3, 11, trim), pixelRect(x + 14, y + 16, 12, 6, trim), pixelRect(x + 23, y + 6, 9, 4, accent));
-      else if (kind === "finance") [7, 12, 17].forEach((h, i) => put(pixelRect(x + 9 + i * 9, y + 23 - h, 5, h, "#8a9e70")));
-      else if (kind === "school") put(pixelRect(x + 8, y + 8, 11, 13, "#b8bc91"), pixelRect(x + 22, y + 8, 11, 13, "#c9c9a2"), pixelRect(x + 19, y + 7, 3, 16, trim));
-      else if (kind === "workshop") put(pixelRect(x + 10, y + 7, 8, 6, trim), pixelRect(x + 18, y + 11, 4, 11, trim), pixelRect(x + 22, y + 7, 10, 6, trim));
-      else put(pixelRect(x + 9, y + 8, 24, 3, accent), pixelRect(x + 9, y + 14, 16, 3, accent), pixelRect(x + 9, y + 20, 20, 2, accent));
-    };
-    put(pixelPath("M30 172h174v5h15v8H25v-7h5Z", "#7f965b33"));
-    if (["workshop", "cottage", "music"].includes(style)) {
-      put(pixelRect(178, 36, 19, 53, "#b39373"), pixelRect(190, 36, 7, 53, "#967f62"), pixelRect(174, 31, 27, 7, "#c0a283"));
-      for (let y = 43; y < 83; y += 10) put(pixelRect(180, y, 15, 2, "#d2b293"));
-      put(pixelRect(182, 19, 8, 6, "#ecebd9"), pixelRect(188 + variant * 2, 7, 11, 7, "#e7e8d5"));
-    }
-    if (style === "architecture" || style === "command") {
-      block(142, 43, 62, 128, shade(wall, .08));
-      roofAt(134, 14, 78, 3, shade(roof, -.08));
-      windowAt(157, 57, 23, 26);
-      windowAt(157, 106, 23, 25);
-      if (style === "command") put(pixelRect(173, 0, 3, 25, trim), pixelPath("M176 0h23v5h-5v5h-18Z", accent));
-      block(28, 105, 122, 66);
-      roofAt(16, 56, 144, 6);
-      windowAt(43, 119, 23, 26); doorAt(91, 126);
-    } else if (style === "observatory") {
-      block(35, 105, 174, 66);
-      block(83, 58, 77, 54, shade(wall, .05));
-      roofAt(73, 17, 97, 5, shade(roof, .04));
-      windowAt(106, 65, 25, 28);
-      roofAt(26, 89, 192, 2);
-      windowAt(49, 121, 25, 26); windowAt(169, 121, 25, 26); doorAt(106, 126);
-      put(pixelRect(194, 45, 5, 37, trim), pixelRect(187, 76, 20, 4, trim), pixelPath("M183 45v-6h8v-6h24v6h-8v6Z", "#839c91"), pixelRect(210, 30, 10, 10, "#b6c9b8"));
-    } else if (style === "farm") {
-      block(24, 102, 136, 69); roofAt(12, 45, 160, 7);
-      doorAt(76, 123, 39, 48); windowAt(39, 118, 22, 25);
-      block(174, 130, 46, 41, shade(wall, .09)); roofAt(166, 105, 62, 3);
-      put(pixelRect(191, 149, 15, 22, shade(trim, -.2)), pixelRect(184, 164, 8, 7, "#e8dfc1"), pixelRect(180, 161, 6, 6, "#efe9d4"), pixelRect(179, 158, 4, 3, "#be8a6a"), pixelRect(178, 165, 3, 2, "#c9a24e"), pixelRect(185, 171, 2, 5, trim));
-    } else {
-      block(28, 103, 184, 68); roofAt(16, 38, 208, 8);
-      windowAt(44, 118); windowAt(171, 118); doorAt(106, 126);
-      // A dormer is built from the same roof tiles instead of a floating icon.
-      if (["cottage", "school", "music"].includes(style)) {
-        block(100, 60, 42, 32, shade(wall, .1)); roofAt(94, 35, 54, 3); windowAt(111, 65, 17, 17);
-      }
-      if (style === "finance") {
-        put(pixelRect(36, 109, 5, 62, trim), pixelRect(199, 109, 5, 62, trim), pixelRect(35, 160, 8, 11, "#bba985"), pixelRect(198, 160, 8, 11, "#bba985"));
-      }
-    }
-    if (["school", "music", "finance", "workshop"].includes(style)) sign(variant % 2 ? 3 : 183, 151, style);
-    else if (style !== "farm") {
-      put(pixelRect(44, 153, 34, 8, trim), pixelRect(44, 153, 34, 3, shade(trim, .3)));
-      [45, 57, 69].forEach((x, i) => put(pixelFlower(x, 142, ["#ddaf8a", "#dcc38a", "#b8adc0"][i])));
-    }
-    return house;
+    return window.StarhavenHouseArt.house(agent);
   }
 
   function renderPlot(agent, map) {
@@ -651,11 +579,11 @@
       const hit = el("button", "home-hit painted-hit");
       hit.type = "button";
       hit.dataset.agent = agent.id;
-      hit.setAttribute("aria-label", `进入${agent.house.name || agent.home}，与${agent.name}对话`);
+      hit.setAttribute("aria-label", agent.id === "scout" ? "进入星探的观察站，查看材料架和资料书架" : `进入${agent.house.name || agent.home}，与${agent.name}对话`);
       hit.style.left = `${rectX}px`; hit.style.top = `${rectY}px`;
       hit.style.width = `${rectW}px`; hit.style.height = `${rectH}px`;
       hit.append(buildingLabel(agent));
-      hit.addEventListener("click", () => selectAgent(agent.id, true));
+      hit.addEventListener("click", () => { if (agent.id === "scout") { selectAgent(agent.id); showView("scout"); } else selectAgent(agent.id, true); });
       group.append(hit);
       const sprite = residentSprite(agent);
       sprite.style.left = `${agent.plot.pos[0]}px`;
@@ -673,7 +601,9 @@
     hit.type = "button";
     hit.dataset.agent = agent.id;
     hit.setAttribute("aria-label", `进入${agent.house.name || agent.home}，与${agent.name}对话`);
-    hit.append(buildingLabel(agent));
+    const label = buildingLabel(agent);
+    label.style.top = `${window.StarhavenHouseArt.labelY(agent)}px`;
+    hit.append(label);
     hit.addEventListener("click", () => selectAgent(agent.id, true));
     plot.append(hit);
     plot.append(residentSprite(agent));
@@ -934,6 +864,7 @@
       });
     }
     for (const [id, record] of mapView.plots) if (!present.has(id)) { record.node.remove(); mapView.plots.delete(id); }
+    window.StarhavenScoutWorkspace?.renderMap(world, map);
     applyMapTransform();
   }
 
@@ -1265,11 +1196,13 @@
     if (!create && !agent) return;
     ui.dialogMode = create ? "create" : "edit";
     ui.dialogAgent = create ? null : agent.id;
+    ui.dialogAvatar = create ? "captain" : chosenAvatar(agent);
     $("#profile-form").reset();
     $("#profile-error").hidden = true;
     $("#profile-dialog-title").textContent = create ? "邀请一位新伙伴" : `${agent.name}的角色档案`;
     $("#dialog-copy").textContent = create ? "每位伙伴都有自己的名字、风格和擅长的事。先从认识彼此开始。" : "你的设定会成为伙伴对话时的参考。共同记忆由你明确添加和修改。";
-    $("#avatar-picker").hidden = !create;
+    $("#avatar-picker").hidden = false;
+    $$("input[name='avatar']").forEach(input => { input.checked = input.value === ui.dialogAvatar; });
     $("#role-field").hidden = !create;
     $("#memories-field").hidden = create;
     $("#save-profile").textContent = create ? "欢迎来到小镇 →" : "保存档案 →";
@@ -1289,10 +1222,11 @@
     const name = $("#agent-name").value.trim();
     if (!name) { $("#agent-name").focus(); return; }
     const body = { name, personality: $("#agent-personality").value.trim(), bio: $("#agent-bio").value.trim() };
+    const selectedAvatar = $("input[name='avatar']:checked")?.value || ui.dialogAvatar;
+    if (create || selectedAvatar !== ui.dialogAvatar) body.avatar = selectedAvatar;
     if (create) {
       body.role = $("#agent-role").value.trim() || "小镇伙伴";
-      body.avatar = $("input[name='avatar']:checked").value;
-      body.color = ({ captain: "#71896a", scout: "#c5a16f", maker: "#8ba198", gardener: "#a1b782" })[body.avatar];
+      body.color = avatarChoices.find(choice => choice.id === selectedAvatar).color;
     } else {
       body.memories = $("#agent-memories").value.split("\n").map(line => line.trim()).filter(Boolean);
       if (body.memories.length > 20 || body.memories.some(line => line.length > 500)) {
@@ -1314,6 +1248,20 @@
       $("#profile-error").textContent = error.message;
       $("#profile-error").hidden = false;
     } finally { $("#save-profile").disabled = false; }
+  }
+
+  for (const choice of avatarChoices) {
+    const label = el("label", "avatar-choice");
+    const input = el("input");
+    input.type = "radio";
+    input.name = "avatar";
+    input.value = choice.id;
+    input.defaultChecked = choice.id === "captain";
+    input.setAttribute("aria-label", choice.name);
+    const picture = avatar({ name: choice.name, avatar: choice.id });
+    picture.alt = "";
+    label.append(input, picture, el("span", "", choice.name));
+    $("#avatar-options").append(label);
   }
 
   $$("[data-view]").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
@@ -1368,6 +1316,7 @@
   window.addEventListener("beforeunload", () => saveDraft(ui.selected, $("#chat-input").value));
   $("#today-label").textContent = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   const showSettingsInitially = location.hash === "#settings";
+  window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
   initMapPan();
   loadSkins();

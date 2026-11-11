@@ -28,4 +28,7 @@ jobs:
           node-version: '22'
       - run: python -m unittest discover -s tests -v
       - run: node --check web/app.js
+      - run: node --check web/house-art.js
+      - run: node --check web/scout-art.js
+      - run: node --check web/scout-workspace.js
       - run: python scripts/export_source.py

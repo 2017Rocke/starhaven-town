@@ -7,6 +7,10 @@
   <title>星栖小镇 · 和智能体一起成长</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/scout-workspace.css">
+  <script src="/house-art.js" defer></script>
+  <script src="/scout-art.js" defer></script>
+  <script src="/scout-workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -34,6 +38,7 @@
       <a class="brand-mark" href="#town" aria-label="星栖小镇首页"><img src="/assets/favicon.svg" alt=""></a>
       <div class="rail-nav" role="tablist" aria-label="小镇功能">
         <button class="nav-item active" id="tab-town" data-view="town" role="tab" aria-selected="true" aria-controls="view-town"><svg><use href="#i-town"/></svg><span>小镇</span></button>
+        <button class="nav-item" id="tab-scout" data-view="scout" role="tab" aria-selected="false" aria-controls="view-scout"><svg><use href="#i-book"/></svg><span>观察站</span></button>
         <button class="nav-item" id="tab-tasks" data-view="tasks" role="tab" aria-selected="false" aria-controls="view-tasks"><svg><use href="#i-board"/></svg><span>任务板</span></button>
         <button class="nav-item" id="tab-growth" data-view="growth" role="tab" aria-selected="false" aria-controls="view-growth"><svg><use href="#i-leaf"/></svg><span>成长册</span></button>
       </div>
@@ -60,6 +65,35 @@
         </div>
         <div class="town-note"><div class="note-icon"><svg><use href="#i-spark"/></svg></div><div><strong>小镇的成长，来自真实的行动</strong><p id="team-status">正在了解伙伴们的近况…</p></div><button class="text-button" data-open-view="growth">翻开成长册 <span>→</span></button></div>
         <div class="below-map"><span><span class="square-dot"></span>各有所长，也彼此照应</span><span>一点灵感 · 一份默契 · 每天进步一点点</span></div>
+      </section>
+
+      <section id="view-scout" class="view content-view scout-view" role="tabpanel" aria-labelledby="tab-scout" hidden>
+        <div class="scout-heading"><div><p class="eyebrow">SCOUT'S OBSERVATORY</p><h1>星探的观察站</h1><p>把远方的新发现，带回小镇慢慢研究。</p></div><button type="button" class="text-button" data-open-view="town">回到小镇 →</button></div>
+        <div class="scout-scene-tabs" role="group" aria-label="观察站场景"><button type="button" data-scout-scene="yard" aria-pressed="true">院子 · 材料架</button><button type="button" data-scout-scene="room" aria-pressed="false">室内 · 资料书架</button></div>
+        <div class="scout-stage-layout">
+          <div class="scout-stage" id="scout-stage"><div class="scout-scene-canvas"><div id="scout-scene-art" class="scout-scene-art" aria-hidden="true"></div><div id="scout-scene-labels" class="scout-scene-labels"></div></div><div class="scout-scene-caption" id="scout-scene-caption">观察站正在开门…</div></div>
+          <aside class="scout-job-card" aria-label="星探采集进度">
+            <div class="scout-job-title"><img src="/assets/scout.svg" alt="星探"><div><strong>星探</strong><span>开源研究员 · 采集员</span></div></div>
+            <ol class="scout-steps" id="scout-steps"></ol>
+            <p class="scout-job-message" id="scout-job-message" role="status" aria-live="polite">正在查看采集记录…</p>
+            <details class="scout-job-errors" id="scout-job-errors" hidden><summary>查看未完成的原因</summary><div id="scout-job-error-list"></div></details>
+            <details class="scout-job-errors" id="scout-job-trail" hidden><summary>这次出发的足迹</summary><div id="scout-job-trail-list"></div></details>
+            <button type="button" class="primary-button scout-start" id="scout-start" disabled>让星探出发 <span>→</span></button>
+            <p class="scout-job-note">寻找公开开源项目，取回源码并整理材料。</p>
+          </aside>
+        </div>
+        <p id="scout-error" class="form-error" role="alert" hidden></p>
+        <form id="scout-schedule" class="scout-schedule">
+          <label class="scout-schedule-toggle"><input type="checkbox" id="scout-daily-enabled"><span><strong>每天自动出发</strong><small>小镇运行时执行 · 北京时间</small></span></label>
+          <label class="scout-time-label">出发时间<input type="time" id="scout-daily-time" value="09:00" required></label>
+          <label class="scout-limit-label">每次最多<select id="scout-daily-limit" aria-label="每次最多采集项目数"><option value="1">1 个项目</option><option value="2">2 个项目</option><option value="3" selected>3 个项目</option><option value="4">4 个项目</option><option value="5">5 个项目</option></select></label>
+          <button type="submit" class="secondary-button" id="scout-save-schedule">保存安排</button>
+          <p>关闭小镇后暂停；再次打开只补今天。已入库的项目不会作为新材料重复采集。</p>
+        </form>
+        <div class="scout-library-tabs" role="group" aria-label="查看观察站收藏"><button type="button" data-scout-library="materials" aria-pressed="true">材料架 <span id="scout-material-count">0</span></button><button type="button" data-scout-library="books" aria-pressed="false">资料书架 <span id="scout-book-count">0</span></button></div>
+        <div class="scout-library-heading"><div><h2 id="scout-library-title">带回来的材料</h2><p id="scout-library-copy">每捆木材，对应一份真实的项目资料。</p></div><label class="scout-search"><span class="sr-only">搜索项目、分类或作者</span><input type="search" id="scout-search" placeholder="找项目、分类、作者…" maxlength="120"></label></div>
+        <div id="scout-materials" class="scout-materials"></div>
+        <p class="scout-safety-note">风险标注来自有限范围的静态初筛，需要结合代码复核；未发现线索不代表项目绝对安全。</p>
       </section>
 
       <section id="view-tasks" class="view content-view" role="tabpanel" aria-labelledby="tab-tasks" hidden>
@@ -98,11 +132,16 @@
     </aside>
   </div>
 
+  <dialog id="scout-material-dialog" class="town-dialog scout-material-dialog" aria-labelledby="scout-material-title">
+    <div class="dialog-header"><div><p class="eyebrow">A FINDING WITH A SOURCE</p><h2 id="scout-material-title">项目材料</h2></div><button type="button" class="icon-button" id="scout-close-material" aria-label="关闭项目材料"><svg><use href="#i-close"/></svg></button></div>
+    <div id="scout-material-detail"></div>
+  </dialog>
+
   <dialog id="profile-dialog" class="town-dialog">
     <form id="profile-form">
       <div class="dialog-header"><div><p class="eyebrow" id="dialog-eyebrow">A FRIEND WITH A STORY</p><h2 id="profile-dialog-title">角色档案</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭角色档案"><svg><use href="#i-close"/></svg></button></div>
       <p class="dialog-copy" id="dialog-copy">把伙伴的风格、故事和需要记住的事，慢慢补充完整。</p>
-      <fieldset id="avatar-picker" class="avatar-picker"><legend>选一个喜欢的形象</legend><label><input type="radio" name="avatar" value="captain" checked><img src="/assets/captain.svg" alt="稳重的队长"></label><label><input type="radio" name="avatar" value="scout"><img src="/assets/scout.svg" alt="好奇的研究员"></label><label><input type="radio" name="avatar" value="maker"><img src="/assets/maker.svg" alt="专注的创造者"></label><label><input type="radio" name="avatar" value="gardener"><img src="/assets/gardener.svg" alt="温和的园艺师"></label></fieldset>
+      <fieldset id="avatar-picker" class="avatar-picker"><legend>选一个喜欢的像素形象</legend><div id="avatar-options" class="avatar-options"></div><p class="avatar-help">十款小镇装扮，随时可以在角色档案中更换。</p></fieldset>
       <label class="field-label" for="agent-name">伙伴的名字<input id="agent-name" name="name" maxlength="32" required placeholder="给伙伴起个名字"></label>
       <label class="field-label" id="role-field" for="agent-role">擅长的工作<input id="agent-role" name="role" maxlength="80" placeholder="例如：创意设计师、知识整理员"></label>
       <label class="field-label" for="agent-personality">相处的风格<textarea id="agent-personality" name="personality" maxlength="1500" rows="2" placeholder="例如：温柔直接，喜欢用具体例子解释复杂问题"></textarea></label>
