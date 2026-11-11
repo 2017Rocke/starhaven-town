@@ -19,7 +19,7 @@
 
 需要 macOS 13+。当前本机验证目标为 Apple Silicon（arm64）。安装包是本地 ad-hoc 签名预览版时，跨电脑下载可能被系统拦截；面向公众发布需完成 Developer ID 签名与公证。
 
-Windows 版本针对 **10.0.17763.379（Windows 10 1809）** 的系统能力设计，使用系统 .NET Framework 4.7.2 和 Microsoft Edge WebView2。旧系统可能没有 WebView2，应用会提供官方安装入口。GitHub 的 Windows 构建与验收使用较新的系统，**不等于在 17763.379 真机上通过测试**。具体依赖、安装和排查步骤见 [Windows 使用说明](docs/WINDOWS.md)。
+Windows 版本针对 **10.0.17763.379（Windows 10 1809）** 的系统能力设计，使用系统 .NET Framework 4.7.2 和 Microsoft Edge WebView2。旧系统可能没有 WebView2，应用会提供官方安装入口。该版本上 Chromium 渲染进程沙箱不可用，因此**默认以 `--no-sandbox` 兼容模式启动**（安全性说明与关闭方法见 Windows 使用说明）；数据目录不可写时回退到程序目录 `data\`。GitHub 的 Windows 构建与验收使用较新的系统，**不等于在 17763.379 真机上通过测试**。具体依赖、安装和排查步骤见 [Windows 使用说明](docs/WINDOWS.md)。
 
 安装后应用位于 `~/Applications/星栖小镇.app`。红叉隐藏窗口；菜单「退出星栖小镇」或 `⌘Q` 完整退出。更新时运行新版安装器，个人资料与聊天保留。桌面图标是应用的符号链接，删图标不会删应用或数据。
 

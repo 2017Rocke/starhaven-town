@@ -32,6 +32,32 @@ WebView2 缺失时，请访问 [Microsoft 官方下载页](https://developer.mic
 
 启动失败日志位于 `%LOCALAPPDATA%\StarhavenTown\logs\desktop-windows.log`。反馈旧系统兼容性时，请附上 `winver` 版本、CPU 架构、WebView2 安装结果及上述日志；不要附 API 密钥。
 
+## 数据目录与临时目录
+
+默认数据目录是 `%LOCALAPPDATA%\StarhavenTown`。启动时会先探测它是否**真的可写**：受限账户、沙箱化启动或某些域策略下，目录可能已存在但无法创建子目录，仅靠 `Directory.CreateDirectory` 的成功与否判断不出来（它对已存在目录直接返回）。
+
+探测失败时依次回退：
+
+1. `--data-dir` 显式指定（指定后即以此为准，失败则报错）
+2. 程序目录下的 `data\`
+3. 都不行才报错并提示路径
+
+运行期需要的临时目录同样处理：`%TEMP%` 不可写时改用数据目录下的 `run-*`，不再启动即崩。
+
+## 旧系统上的兼容模式
+
+Windows 10 1809（17763）上 Chromium 的渲染进程沙箱无法启动，典型表现是白屏，或 `0x80070578 无效的窗口句柄`。因此：
+
+- 内部版本 ≤ 17763 时默认附加 `--no-sandbox`，开箱可用；
+- 其它版本保持默认隔离，初始化抛异常时自动重试一次兼容模式；
+- 想覆盖默认值：在程序目录建 `webview2-args.txt`，内容即传给内核的参数（留空或删除文件恢复默认）。
+
+`--no-sandbox` 关闭内核的进程隔离，是安全性上的让步。应用只加载 `127.0.0.1` 上的本地页面，风险可控；升级到 1903 以上后建议删掉该文件，恢复默认隔离。
+
+## 随包分发的固定版运行时
+
+程序启动时若在自身目录下发现 `WebView2Runtime\msedgewebview2.exe`，会以微软固定版（Fixed Version）方式直接使用它，不再要求系统安装 WebView2，也不会回退到系统运行时。该目录不随官方安装包提供，需要离线或旧系统可用性时自行放入：从微软 WebView2 页面下载对应架构的 `Microsoft.WebView2.FixedVersionRuntime.*.cab`，解压后把含 `msedgewebview2.exe` 的那一层改名为 `WebView2Runtime` 放在 `StarhavenTown.exe` 旁边。
+
 ## 构建与验证
 
 在 Windows x64 安装 Python 3.12 可重定位运行时、.NET Framework 构建工具和 [Inno Setup 6](https://jrsoftware.org/isdl.php)，运行：
