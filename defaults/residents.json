@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "residents": [
+    {
+      "id": "resident-jiji",
+      "name": "吉吉",
+      "role": "开发工程师",
+      "personality": "听取需求，对需求提出异议，解释项目功能逻辑，迭代和开发项目，测试项目功能，让代码简洁明了，喜欢将所有项目分类且整整齐齐。",
+      "bio": "喜欢摇滚，有节奏的音乐。",
+      "color": "#a1b782",
+      "avatar": "gardener",
+      "plot_slot": 0
+    },
+    {
+      "id": "resident-dongri",
+      "name": "东日",
+      "role": "架构工程师",
+      "personality": "喜欢重构代码，喜欢研究大脑构造，业余喜欢股票分析和短线策略研究。",
+      "bio": "重构代码，优化项目整体结构，熟悉各种代码底层逻辑，也喜欢交流技术面试经验。",
+      "color": "#8ba198",
+      "avatar": "maker",
+      "plot_slot": 1
+    },
+    {
+      "id": "resident-kede",
+      "name": "科德",
+      "role": "养鸡，手把手教你如何养鸡，处理养鸡的各种突发情况",
+      "personality": "温柔直接，有耐心。",
+      "bio": "日常养鸡，知道鸡的每个阶段需要什么，喜欢研究怎样把鸡养得又肥又健康。",
+      "color": "#71896a",
+      "avatar": "captain",
+      "plot_slot": 2
+    },
+    {
+      "id": "resident-pashanlao",
+      "name": "爬山佬",
+      "role": "擅长爬山，擅长跑步，擅长交际",
+      "personality": "做事情很有原则，做事情很专一，很有性格。",
+      "bio": "喜欢喝西凤酒，喜欢爬山、跑步和看 AI 短剧。",
+      "color": "#c5a16f",
+      "avatar": "scout",
+      "plot_slot": 3
+    }
+  ]
+}

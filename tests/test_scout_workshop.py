@@ -183,6 +183,7 @@ class WorkshopTest(unittest.TestCase):
         self.desk.close()
         reopened = self.open_desk()
         self.source.candidates = [dict(full_name="SAMPLE/TOOLS", repo_id=101), dict(full_name="new-owner/renamed", repo_id=101)]
+        self.current += dt.timedelta(seconds=30)  # Allow the previous delivery to reach home.
         reopened.start_collect()
         job = self.done(reopened)
         self.assertEqual((job["completed"], job["skipped"]), (0, 2))
@@ -218,6 +219,7 @@ class WorkshopTest(unittest.TestCase):
         self.assertEqual(list(self.desk.pending_root.iterdir()), [])
         self.assertNotIn("sample/broken", self.desk._seen()[0])
         self.source.fail_names.clear()
+        self.current += dt.timedelta(seconds=30)
         self.desk.start_collect({"limit": 2})
         self.done()
         self.assertEqual(len(self.desk.workspace()["materials"]), 2)
@@ -351,6 +353,7 @@ class WorkshopTest(unittest.TestCase):
                 listed = next(item for item in self.desk.workspace()["materials"] if item["id"] == material["id"])
                 self.assertEqual((listed["source_status"], listed["files_available"]), ("partial", 1))
                 self.assertEqual(listed["source_status"], detailed["source_status"])
+                self.current += dt.timedelta(seconds=30)
 
     def test_settings_validation_is_atomic_and_does_not_accept_paths(self):
         initial = self.desk.settings()

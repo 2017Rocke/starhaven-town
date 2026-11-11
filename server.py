@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlsplit
 from scout_workshop import ScoutWorkshop, WorkshopError
 
 BASE_DIR = Path(__file__).resolve().parent
+STARTER_RESIDENTS_PATH = BASE_DIR / "defaults" / "residents.json"
 try:
     VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip()
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?", VERSION):
@@ -40,13 +41,14 @@ DEFAULTS = [
     dict(id="scout", name="星探", role="开源项目研究员 · 采集员", personality="好奇、灵动、认真。喜欢用具体例子解释新发现，分清事实和推测；遇到有趣的项目会兴奋，但不会夸大证据。", bio="住在观察站的开源研究员与采集员。先出门发现公开 GitHub 项目，再把固定版本源码、元数据与出处搬回材料架，最后去重、分类并标注待复核的风险线索。原始材料只有经过真实阅读、分析和复核后，才能形成正式研究报告放入书架；静态初筛不是安全认证。", color="#7fa987", avatar="scout", home="观察站", greeting="你来啦！我把新发现都放进了研究手记，今天想探索哪个方向？", suggestions=["今天发现了哪些有趣项目？", "给我讲讲最新研究的原理", "推荐一个适合我的探索方向"]),
 ]
 
-# 大地图：世界 2880×1320（宽 3 个视口、高 2 个视口），可按住拖动浏览。
+# 北部新增 520 像素森林；使用负 Y 原点，已有居民、村心和地块坐标不迁移。
 # 村心老地图保持 960×660 原尺寸居中——视口与村心同高，打开时看到的小镇与旧版一模一样。
 # 住宅贴着村心生长：左右两片三层住宅区、上下两排临街小屋，按离村心远近分配，
 # 共 28 块地，加上村心两座老建筑（指挥所、观察站），保留旧版 30 人容量。
-WORLD_W, WORLD_H = 2880, 1320
+WORLD_W, WORLD_H = 2880, 1840
+WORLD_X, WORLD_Y = 0, -520
 CORE_W, CORE_H = 960, 660
-CORE_X, CORE_Y = (WORLD_W - CORE_W) // 2, (WORLD_H - CORE_H) // 2
+CORE_X, CORE_Y = 960, 330
 PLOT_W, PLOT_H = 320, 240
 # 地块错落排布：村心左右各三列、上下各一排，行距 280（留出院落之间的草地），
 # 同一列内用 ±5 像素的纵向偏移避免像棋盘。
@@ -335,14 +337,54 @@ class TownApp:
                 db.execute("ALTER TABLE agents ADD COLUMN plot TEXT NOT NULL DEFAULT '{}'")
             if "house" not in columns:
                 db.execute("ALTER TABLE agents ADD COLUMN house TEXT NOT NULL DEFAULT '{}'")
+            fresh_town = db.execute("SELECT 1 FROM agents LIMIT 1").fetchone() is None
             for item in DEFAULTS:
                 db.execute("INSERT OR IGNORE INTO agents (id,name,role,personality,bio,color,avatar,home,greeting,suggestions,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", tuple(item[k] for k in ("id", "name", "role", "personality", "bio", "color", "avatar", "home", "greeting")) + (json.dumps(item["suggestions"], ensure_ascii=False), now()))
+            if fresh_town:
+                self._seed_starter_residents(db)
             scout_defaults = next(item for item in DEFAULTS if item["id"] == "scout")
             db.execute("UPDATE agents SET role=? WHERE id='scout' AND role=?", (scout_defaults["role"], LEGACY_SCOUT_ROLE))
             db.execute("UPDATE agents SET bio=? WHERE id='scout' AND bio=?", (scout_defaults["bio"], LEGACY_SCOUT_BIO))
             self._backfill_plots(db)
             db.execute("UPDATE messages SET status='failed' WHERE id IN (SELECT user_message_id FROM jobs WHERE status IN ('queued','running'))")
             db.execute("UPDATE jobs SET status='failed', error=?, updated_at=? WHERE status IN ('queued','running')", ("服务重新启动，上次对话未完成，请重新发送。", now()))
+
+    @staticmethod
+    def _seed_starter_residents(db):
+        """Publishable character profiles only; never import a personal database."""
+        path = STARTER_RESIDENTS_PATH
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 50000:
+            raise RuntimeError("初始居民配置缺失或无效，请重新安装完整的小镇。")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or set(payload) != {"format", "residents"} or type(payload["format"]) is not int or payload["format"] != 1:
+                raise ValueError("Unsupported starter format")
+            residents = payload["residents"]
+            if not isinstance(residents, list) or not 0 < len(residents) <= len(PLOT_SLOTS):
+                raise ValueError("Invalid starter count")
+            allowed = {"id", "name", "role", "personality", "bio", "color", "avatar", "plot_slot"}
+            identities, slots = set(), set()
+            for item in residents:
+                if not isinstance(item, dict) or set(item) != allowed:
+                    raise ValueError("Unexpected starter profile fields")
+                identity, slot = item["id"], item["plot_slot"]
+                if not isinstance(identity, str) or not re.fullmatch(r"resident-[a-z][a-z0-9-]{0,48}", identity) or identity in identities:
+                    raise ValueError("Invalid starter identity")
+                if type(slot) is not int or not 0 <= slot < len(PLOT_SLOTS) or slot in slots:
+                    raise ValueError("Invalid starter plot")
+                identities.add(identity); slots.add(slot)
+                for key, limit in (("name", 32), ("role", 80), ("personality", 1500), ("bio", 2000)):
+                    bounded_text(item[key], key, limit, key in ("name", "role"))
+                checked_avatar(item["avatar"])
+                if not isinstance(item["color"], str) or not _hex(item["color"]):
+                    raise ValueError("Invalid starter color")
+                db.execute("INSERT INTO agents (id,name,role,personality,bio,color,avatar,home,greeting,suggestions,plot,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                           tuple(item[key] for key in ("id", "name", "role", "personality", "bio", "color", "avatar"))
+                           + ("", "你好，我是%s。很高兴与你在小镇相遇。" % item["name"],
+                              json.dumps(["介绍一下你自己", "我们一起聊聊新想法", "有什么值得记录的小目标？"], ensure_ascii=False),
+                              json.dumps(dict(slot=slot)), now()))
+        except (OSError, ValueError, TypeError, KeyError, APIError) as exc:
+            raise RuntimeError("初始居民配置无效，未导入任何居民，请重新安装完整的小镇。") from exc
 
     @staticmethod
     def _json_cell(value, fallback):
@@ -513,7 +555,7 @@ class TownApp:
         skins, default_skin = self.skin_choices()
         selected_skin = saved_skin[0] if saved_skin and saved_skin[0] in skins else default_skin
         return dict(town=dict(name="星栖小镇", subtitle="让伙伴有自己的故事，让每一步成长有迹可循"),
-                    map=dict(world=[WORLD_W, WORLD_H], core=[CORE_X, CORE_Y, CORE_W, CORE_H], plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS),
+                    map=dict(world=[WORLD_W, WORLD_H], origin=[WORLD_X, WORLD_Y], core=[CORE_X, CORE_Y, CORE_W, CORE_H], plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS),
                     provider=self.provider_status(), agents=agents, selected_agent_id=selected[0] if selected else "linghang",
                     selected_skin=selected_skin,
                     work_items=records[0], improvements=records[1], reports=self.reports(),

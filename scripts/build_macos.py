@@ -16,6 +16,8 @@ from runtime_check import verify_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "星栖小镇"
+BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py",
+                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "VERSION")
 
 
 def run(*args, **kwargs):
@@ -36,6 +38,16 @@ def bundle_skeleton(path):
     (path / "Contents" / "MacOS").mkdir(parents=True)
     (path / "Contents" / "Resources").mkdir()
     (path / "Contents" / "PkgInfo").write_bytes(b"APPL????")
+
+
+def copy_backend(destination):
+    """Copy the public application and its shipped defaults, never user data."""
+    destination.mkdir(parents=True)
+    for name in BACKEND_FILES:
+        shutil.copy2(ROOT / name, destination / name)
+    shutil.copytree(ROOT / "web", destination / "web")
+    (destination / "defaults").mkdir()
+    shutil.copy2(ROOT / "defaults" / "residents.json", destination / "defaults" / "residents.json")
 
 
 def copy_runtime(runtime, destination):
@@ -114,10 +126,7 @@ def main():
     bundle_skeleton(app)
     resources = app / "Contents" / "Resources"
     backend = resources / "backend"
-    backend.mkdir()
-    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "scout_workshop.py", "scout_collect.py", "scout_scan.py", "VERSION"):
-        shutil.copy2(ROOT / name, backend / name)
-    shutil.copytree(ROOT / "web", backend / "web")
+    copy_backend(backend)
     copy_runtime(args.python_runtime.resolve(), backend / "runtime")
     launcher = backend / "StarhavenBackend"
     launcher.write_text('#!/bin/sh\nset -eu\nbackend_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\nexport SSL_CERT_FILE=/etc/ssl/cert.pem\nexec "$backend_dir/runtime/bin/python3" -I -B "$backend_dir/desktop_runner.py" "$@"\n')

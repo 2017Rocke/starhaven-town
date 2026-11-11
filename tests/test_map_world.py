@@ -12,7 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
-    PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W,
+    PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
     create_server, design_house, painted_house,
 )
 
@@ -63,10 +63,10 @@ class MapWorldTest(unittest.TestCase):
         for slot, (cx, cy) in enumerate(PLOT_SLOTS):
             x, y = cx - PLOT_W // 2, cy - PLOT_H // 2
             with self.subTest(slot=slot):
-                self.assertGreaterEqual(x, 0)
-                self.assertGreaterEqual(y, 0)
-                self.assertLessEqual(x + PLOT_W, WORLD_W)
-                self.assertLessEqual(y + PLOT_H, WORLD_H)
+                self.assertGreaterEqual(x, WORLD_X)
+                self.assertGreaterEqual(y, WORLD_Y)
+                self.assertLessEqual(x + PLOT_W, WORLD_X + WORLD_W)
+                self.assertLessEqual(y + PLOT_H, WORLD_Y + WORLD_H)
                 for rx, ry, rw, rh in regions:
                     self.assertFalse(x < rx + rw and rx < x + PLOT_W
                                      and y < ry + rh and ry < y + PLOT_H)
@@ -126,7 +126,8 @@ class MapWorldTest(unittest.TestCase):
     def test_migration_repairs_invalid_and_duplicate_slots_preserving_valid_owners(self):
         self.start()
         residents = [self.app.add_agent({"name": "伙伴%s" % i})["agent"] for i in range(9)]
-        damaged = [{}, {"slot": 0}, {"slot": 0}, {"slot": True}, {"slot": [2]},
+        valid_slot = residents[1]["plot"]["slot"]
+        damaged = [{}, {"slot": valid_slot}, {"slot": valid_slot}, {"slot": True}, {"slot": [2]},
                    {"slot": -1}, {"slot": 999}, {"slot": 1.0}, {"slot": "2"}]
         with self.app.db() as db:
             for agent, plot in zip(residents, damaged):
@@ -137,7 +138,7 @@ class MapWorldTest(unittest.TestCase):
             db.execute("UPDATE agents SET plot=?,house=? WHERE id='linghang'", ('{"slot":2}', '[]'))
         self.start()
         repaired = self.agents()
-        self.assertEqual(repaired[residents[1]["id"]]["plot"]["slot"], 0)
+        self.assertEqual(repaired[residents[1]["id"]]["plot"]["slot"], valid_slot)
         lots = [repaired[agent["id"]]["plot"] for agent in residents]
         self.assertEqual(len({plot["slot"] for plot in lots}), len(lots))
         for agent in residents:
@@ -324,10 +325,11 @@ class MapWorldTest(unittest.TestCase):
         with closing(sqlite3.connect(str(self.data / "town.sqlite3"))) as db:
             self.assertEqual(db.execute("SELECT * FROM agents ORDER BY rowid").fetchall(), original)
         self.start()
-        self.assertEqual(len(self.agents()), 4)
+        self.assertEqual(len(self.agents()), len(original))
 
     def test_concurrent_arrivals_do_not_share_plots_or_exceed_capacity(self):
         self.start()
+        remaining = MAX_RESIDENTS - len(self.agents())
 
         def arrival(index):
             try:
@@ -338,9 +340,9 @@ class MapWorldTest(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(arrival, range(36)))
         accepted = [result for result in results if isinstance(result, dict)]
-        self.assertEqual(len(accepted), 28)
-        self.assertEqual(len({agent["plot"]["slot"] for agent in accepted}), 28)
-        self.assertEqual([result for result in results if isinstance(result, int)], [400] * 8)
+        self.assertEqual(len(accepted), remaining)
+        self.assertEqual(len({agent["plot"]["slot"] for agent in accepted}), remaining)
+        self.assertEqual([result for result in results if isinstance(result, int)], [400] * (36 - remaining))
         self.assertEqual(len(self.agents()), 30)
 
 

@@ -11,7 +11,7 @@ Windows 发布提供两个附件：
 
 此版本属于 **Windows 10 1809 / 17763**。本项目将 **Windows 10 1809 x64** 设为最低目标，面向 Intel / AMD 64 位处理器。安装器和桌面入口都会检查系统版本。32 位 Windows 不受支持。
 
-上游 1.5.1 提交 `d0715bf` 记录 **17763.379 启动自检通过**，包括页面标题、居民加载及退出码。**本次 1.7.0 合并没有在该系统复验，完整功能与安装升级仍待验收。** GitHub 的 `windows-2022` 任务使用较新的 Windows Server，其构建与集成测试也不能代替旧补丁版本验收。微软支持说明要求安装适用的最新累计更新；旧补丁可能影响 WebView2 安装、系统证书及 HTTPS 连接。
+上游 1.5.1 提交 `d0715bf` 记录 **17763.379 启动自检通过**，包括页面标题、居民加载及退出码。**本次 1.8.0 更新没有在该系统复验，完整功能与安装升级仍待验收。** GitHub 的 `windows-2022` 任务使用较新的 Windows Server，其构建与集成测试也不能代替旧补丁版本验收。微软支持说明要求安装适用的最新累计更新；旧补丁可能影响 WebView2 安装、系统证书及 HTTPS 连接。
 
 依赖及处理方式：
 
@@ -56,7 +56,7 @@ WebView2 缺失时，请访问 [Microsoft 官方下载页](https://developer.mic
 
 ## 随包分发的固定版运行时
 
-程序启动时若在自身目录下发现 `WebView2Runtime\msedgewebview2.exe`，会以微软固定版（Fixed Version）方式直接使用它，不再要求系统安装 WebView2，也不会回退到系统运行时。该目录不随官方安装包提供，需要离线或旧系统可用性时自行放入：从微软 WebView2 页面下载对应架构的 `Microsoft.WebView2.FixedVersionRuntime.*.cab`，解压后把含 `msedgewebview2.exe` 的那一层改名为 `WebView2Runtime` 放在 `StarhavenTown.exe` 旁边。
+程序启动时若在自身目录下发现 `WebView2Runtime\msedgewebview2.exe`，会以微软固定版（Fixed Version）方式直接使用它，不再要求系统安装 WebView2，也不会回退到系统运行时。**1.8.0 的 Setup.exe 和便携 ZIP 默认均不包含该浏览器运行时**，包内 `WebView2Loader.dll` 与 SDK 程序集也不能替代它。需要离线部署时，从微软 WebView2 页面下载受支持的 x64 `Microsoft.WebView2.FixedVersionRuntime.*.cab`，解压后把含 `msedgewebview2.exe` 的那一层改名为 `WebView2Runtime` 放在 `StarhavenTown.exe` 旁边。固定版不会自动更新，需要维护者负责后续安全更新；它不保证能解决古老系统补丁或证书问题。
 
 ## 构建与验证
 
@@ -70,7 +70,9 @@ python scripts/build_windows.py --python-runtime "C:\path\to\relocatable-python"
 
 GitHub Actions → **Build installers** → **Run workflow** 可构建两个 macOS 架构和 Windows x64。Windows 原生集成测试仅在可丢弃测试账号中执行，会创建该账号的快捷方式及卸载信息。自测用临时中文目录，验证网页实际加载、SQLite 数据、重复启动保留文件、关闭后端口释放、安装升级和卸载数据保留。
 
-针对 1.7.0 在 17763.379 上的待验收项目：安装与桌面图标、缺失 WebView2 的提示和官方安装流程、启动与拖拽地图、居民创建和聊天、观察站采集与资料展示、HTTPS 模型连接、退出无后台残留、覆盖升级保留数据。未完成该系统验收前，请把完整兼容性视为待确认。
+1.8.0 安装包还包含 `scout_journey.py`、`defaults/residents.json` 和森林、行走网页资源。公开初始配置只在全新小镇中添加吉吉、东日、科德、爬山佬，与领航、星探组成六位初始居民；升级不会覆盖已有居民，也不会自动加入这些新伙伴。Windows 原生窗口及桌面快捷方式自测同时核对六位初始居民和两位核心角色，避免漏装默认配置却误报成功。
+
+针对 1.8.0 在 17763.379 上的待验收项目：安装与桌面图标、缺失 WebView2 的提示和官方安装流程、启动与拖拽地图、六位初始居民、北部森林及星探沿路行走、居民创建和聊天、观察站采集与资料展示、HTTPS 模型连接、退出无后台残留、覆盖升级保留数据。未完成该系统验收前，请把完整兼容性视为待确认。
 
 ## 官方依据
 

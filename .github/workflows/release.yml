@@ -1,10 +1,12 @@
 name: Build installers
+run-name: Build installers · ${{ github.ref_name }} · ${{ github.sha }}
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   macos:
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -12,10 +14,19 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.9.5'
       - run: uv python install 3.12
+      - name: Check browser code and walking behavior
+        run: |
+          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js; do
+            node --check "$script"
+          done
+          node tests/test_scout_journey.js
       - name: Test and build
         run: |
           uv run --python 3.12 --no-project python -m unittest discover -s tests -v
@@ -27,15 +38,21 @@ jobs:
         with:
           name: starhaven-${{ matrix.runner }}
           path: dist/*
+          if-no-files-found: error
+          compression-level: 0
 
   windows:
     # Server 2022 validates packaging. It is NOT a Windows 10 17763.379 test.
     runs-on: windows-2022
+    timeout-minutes: 45
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.9.5'
@@ -71,6 +88,13 @@ jobs:
       - name: Test and build Windows x64 installer and portable package
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js')) {
+            node --check $script
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          node tests/test_scout_journey.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv python install 3.12
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run --python 3.12 --no-project python -m unittest discover -s tests -v
@@ -90,6 +114,8 @@ jobs:
         with:
           name: starhaven-windows-x64
           path: dist/*
+          if-no-files-found: error
+          compression-level: 0
       - name: Preserve Windows diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4

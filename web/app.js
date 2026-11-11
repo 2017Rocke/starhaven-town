@@ -588,7 +588,7 @@
       const sprite = residentSprite(agent);
       sprite.style.left = `${agent.plot.pos[0]}px`;
       sprite.style.top = `${agent.plot.pos[1] + rectH * 0.3}px`;
-      group.append(sprite);
+      if (agent.id !== "scout") group.append(sprite);
       return group;
     }
     const plot = el("div", `plot${agent.id === ui.selected ? " selected" : ""}`);
@@ -606,11 +606,13 @@
     hit.append(label);
     hit.addEventListener("click", () => selectAgent(agent.id, true));
     plot.append(hit);
-    plot.append(residentSprite(agent));
+    if (agent.id !== "scout") plot.append(residentSprite(agent));
     return plot;
   }
 
   const mapView = { x: 0, y: 0, scale: 1, ready: false, drag: null, frame: null, layout: null, background: null, plots: new Map(), canvasWidth: 0, canvasHeight: 0 };
+
+  const mapOrigin = map => Array.isArray(map?.origin) ? map.origin : [0, 0];
 
   function applyMapTransform() {
     const scene = $("#town-scene"), world = $("#map-world"), map = ui.state?.map;
@@ -619,8 +621,8 @@
     // One scale for both axes keeps tree crowns, characters and pixels square.
     const scale = Math.min(width / map.core[2], height / map.core[3]);
     if (!mapView.ready) {
-      mapView.x = width / 2 - (map.core[0] + map.core[2] / 2) * scale;
-      mapView.y = height / 2 - (map.core[1] + map.core[3] / 2) * scale;
+      mapView.x = width / 2 - (map.core[0] + map.core[2] / 2 - mapOrigin(map)[0]) * scale;
+      mapView.y = height / 2 - (map.core[1] + map.core[3] / 2 - mapOrigin(map)[1]) * scale;
       mapView.ready = true;
     } else if (width !== mapView.canvasWidth || height !== mapView.canvasHeight) {
       const centerX = (mapView.canvasWidth / 2 - mapView.x) / mapView.scale;
@@ -633,8 +635,8 @@
     mapView.y = Math.round(Math.min(0, Math.max(height - map.world[1] * scale, mapView.y)));
     world.style.transform = `translate(${mapView.x}px, ${mapView.y}px) scale(${scale})`;
     world.style.setProperty("--map-ui-scale", String(Math.max(1, 1 / scale)));
-    const homeX = width / 2 - (map.core[0] + map.core[2] / 2) * scale;
-    const homeY = height / 2 - (map.core[1] + map.core[3] / 2) * scale;
+    const homeX = width / 2 - (map.core[0] + map.core[2] / 2 - mapOrigin(map)[0]) * scale;
+    const homeY = height / 2 - (map.core[1] + map.core[3] / 2 - mapOrigin(map)[1]) * scale;
     scene.classList.toggle("panned", Math.abs(mapView.x - homeX) > 45 || Math.abs(mapView.y - homeY) > 45);
   }
 
@@ -644,19 +646,27 @@
   }
 
   function returnToVillage() {
+    window.StarhavenScoutWorkspace?.stopFollowing();
     mapView.ready = false;
     applyMapTransform();
   }
 
+  function centerMap(point) {
+    const scene = $("#town-scene"), map = ui.state?.map;
+    if (!scene?.clientWidth || !map) return;
+    mapView.x = scene.clientWidth / 2 - (point[0] - mapOrigin(map)[0]) * mapView.scale;
+    mapView.y = scene.clientHeight / 2 - (point[1] - mapOrigin(map)[1]) * mapView.scale;
+    mapView.ready = true;
+    applyMapTransform();
+  }
+
   function revealResident(id) {
+    if (id === "scout") { window.StarhavenScoutWorkspace?.locate(); return; }
     const agent = ui.state?.agents.find(item => item.id === id), scene = $("#town-scene"), map = ui.state?.map;
     if (!agent?.plot?.pos || !map || !scene.clientWidth) return;
     const [x, y] = agent.plot.pos;
     const center = agent.house?.painted ? [x, y] : [x + map.plot[0] / 2, y + map.plot[1] / 2];
-    mapView.x = scene.clientWidth / 2 - center[0] * mapView.scale;
-    mapView.y = scene.clientHeight / 2 - center[1] * mapView.scale;
-    mapView.ready = true;
-    applyMapTransform();
+    centerMap(center);
   }
 
   function initMapPan() {
@@ -678,6 +688,7 @@
       if (!drag.moved && Math.hypot(dx, dy) < 7) return;
       if (!drag.moved) {
         drag.moved = true;
+        window.StarhavenScoutWorkspace?.stopFollowing();
         scene.classList.add("grabbing");
         // Capture only after a drag begins; a simple click keeps its real button target.
         try { scene.setPointerCapture(event.pointerId); } catch { /* Window events still follow the pointer. */ }
@@ -712,6 +723,7 @@
       const directions = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
       if (!directions[event.key]) return;
       event.preventDefault();
+      window.StarhavenScoutWorkspace?.stopFollowing();
       const [dx, dy] = directions[event.key], distance = event.shiftKey ? 180 : 72;
       mapView.x += dx * distance; mapView.y += dy * distance;
       applyMapTransform();
@@ -789,18 +801,19 @@
 
   function worldBackground(map) {
     const [width, height] = map.world;
-    const svg = svgNode("svg", { class: "world-bg", viewBox: `0 0 ${width} ${height}`, width, height, "shape-rendering": "crispEdges", "aria-hidden": "true" });
-    svg.append(pixelRect(0, 0, width, height, "#d6e4b8"));
+    const svg = svgNode("svg", { class: "world-bg", viewBox: `${mapOrigin(map)[0]} ${mapOrigin(map)[1]} ${width} ${height}`, width, height, "shape-rendering": "crispEdges", "aria-hidden": "true" });
+    svg.style.top = `${mapOrigin(map)[1]}px`;
+    svg.append(pixelRect(mapOrigin(map)[0], mapOrigin(map)[1], width, height, "#d6e4b8"));
     const rand = mulberry32(20261110);
     for (let i = 0; i < 70; i++) {
-      const x = Math.floor(rand() * width / 6) * 6, y = Math.floor(rand() * height / 6) * 6;
+      const x = Math.floor(rand() * width / 6) * 6, y = Math.floor(rand() * height / 6) * 6 + mapOrigin(map)[1];
       const patch = pixelPath("M0 12h18V0h42v6h24v12h12v24H78v12H36v-6H12V36H0Z", i % 2 ? "#cedfae" : "#d0e0b0");
       patch.setAttribute("transform", `translate(${x} ${y})`); svg.append(patch);
     }
     // Sparse three-pixel flecks match the density of town.svg, with no square lawn borders.
     const flecks = ["#c3d69f", "#bfcf9d", "#e3ebca", "#c9dca9"];
     for (let i = 0; i < 2100; i++) {
-      const x = Math.floor(rand() * width / 3) * 3, y = Math.floor(rand() * height / 3) * 3;
+      const x = Math.floor(rand() * width / 3) * 3, y = Math.floor(rand() * height / 3) * 3 + mapOrigin(map)[1];
       if (x > map.core[0] && x < map.core[0] + map.core[2] && y > map.core[1] && y < map.core[1] + map.core[3]) continue;
       svg.append(pixelRect(x, y, 3, 3, flecks[i % 4]));
       if (i % 3 === 0) svg.append(pixelRect(x + 6, y + 3, 3, 3, flecks[i % 4]));
@@ -822,17 +835,26 @@
       const x = 25 + Math.floor(rand() * (width - 50)), y = i % 2 ? 289 : 1047;
       svg.append(pixelFlower(x, y, i % 2 ? "#dcc38a" : "#ddaf8a"));
     }
+    if (mapOrigin(map)[1] < 0 && window.StarhavenForestArt) {
+      const forest = svgNode("g", { class: "forest-park" });
+      forest.innerHTML = window.StarhavenForestArt.scene(); svg.append(forest);
+    }
     return svg;
   }
 
   function updateMap() {
-    const world = $("#map-world"), map = ui.state?.map;
-    if (!world || !map) return;
+    const worldRoot = $("#map-world"), map = ui.state?.map;
+    if (!worldRoot || !map) return;
+    let world = worldRoot.querySelector(".map-land");
     const layoutKey = JSON.stringify(map);
     if (mapView.layout !== layoutKey) {
-      world.replaceChildren();
-      mapView.plots.clear(); mapView.background = null; mapView.layout = layoutKey;
+      worldRoot.replaceChildren();
+      world = el("div", "map-land");
+      world.style.left = `${-mapOrigin(map)[0]}px`; world.style.top = `${-mapOrigin(map)[1]}px`;
       world.style.width = `${map.world[0]}px`; world.style.height = `${map.world[1]}px`;
+      worldRoot.append(world);
+      mapView.plots.clear(); mapView.background = null; mapView.layout = layoutKey;
+      worldRoot.style.width = `${map.world[0]}px`; worldRoot.style.height = `${map.world[1]}px`;
       const art = el("img", "map-art");
       art.src = "/assets/town.svg"; art.alt = ""; art.draggable = false;
       art.setAttribute("aria-hidden", "true");
@@ -864,6 +886,15 @@
       });
     }
     for (const [id, record] of mapView.plots) if (!present.has(id)) { record.node.remove(); mapView.plots.delete(id); }
+    const scout = ui.state.agents.find(agent => agent.id === "scout");
+    if (scout) {
+      let traveller = world.querySelector(".scout-traveller");
+      if (!traveller) { traveller = residentSprite(scout); traveller.classList.add("scout-traveller"); world.append(traveller); }
+      const face = traveller.querySelector("img");
+      if (face && !face.src.endsWith(`/assets/${chosenAvatar(scout)}.svg`)) face.src = `/assets/${chosenAvatar(scout)}.svg`;
+      traveller.classList.toggle("selected", scout.id === ui.selected);
+      traveller.setAttribute("aria-pressed", String(scout.id === ui.selected));
+    }
     window.StarhavenScoutWorkspace?.renderMap(world, map);
     applyMapTransform();
   }
@@ -1316,7 +1347,7 @@
   window.addEventListener("beforeunload", () => saveDraft(ui.selected, $("#chat-input").value));
   $("#today-label").textContent = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   const showSettingsInitially = location.hash === "#settings";
-  window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
+  window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, centerMap, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
   initMapPan();
   loadSkins();

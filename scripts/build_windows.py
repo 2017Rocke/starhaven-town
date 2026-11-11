@@ -16,6 +16,8 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "StarhavenTown"
 DISPLAY_NAME = "星栖小镇"
+BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py",
+                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "VERSION")
 
 
 def run(*args, **kwargs):
@@ -62,6 +64,16 @@ def copy_runtime(src: Path, dest: Path):
     shutil.copytree(src, dest, symlinks=False, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
     if not (dest / "python.exe").is_file():
         raise RuntimeError("Python runtime missing python.exe: " + str(src))
+
+
+def copy_backend(destination: Path):
+    """Copy the public application and its shipped defaults, never user data."""
+    destination.mkdir(parents=True)
+    for name in BACKEND_FILES:
+        shutil.copy2(ROOT / name, destination / name)
+    shutil.copytree(ROOT / "web", destination / "web")
+    (destination / "defaults").mkdir()
+    shutil.copy2(ROOT / "defaults" / "residents.json", destination / "defaults" / "residents.json")
 
 
 def generate_icon_ico(png: Path, icon: Path):
@@ -117,7 +129,7 @@ def build_native_host(package: Path):
         '<?xml version="1.0" encoding="utf-8"?><configuration><startup><supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.7.2"/></startup></configuration>\n', encoding="utf-8")
 
 
-def write_launcher(package: Path):
+def write_launcher(package: Path, version: str):
     (package / "使用说明.txt").write_text(
         DISPLAY_NAME + " Windows x64 版\n\n"
         "安装版：双击 Setup.exe 安装，仅当前用户使用，不需要管理员权限。\n"
@@ -132,7 +144,7 @@ def write_launcher(package: Path):
         "升级与卸载保留用户数据；便携版换目录前请备份，回退目录里的数据不会自动迁移。\n"
         "1809 默认使用 --no-sandbox 兼容模式，会关闭浏览器进程沙箱；较新系统初始化失败时也会尝试该模式。\n"
         "支持使用程序旁 WebView2Runtime 文件夹内的固定版运行时，本安装包默认不包含该目录。\n"
-        "上游 1.5.1 记录 Windows 10.0.17763.379 启动自检通过；1.7.0 完整功能与安装升级尚待该系统验收。\n"
+        f"上游 1.5.1 记录 Windows 10.0.17763.379 启动自检通过；{version} 完整功能与安装升级尚待该系统验收。\n"
         "微软支持要求安装适用累计更新；古老补丁可能影响运行时安装与 HTTPS。\n"
         "当前 EXE 尚未代码签名，系统可能显示未知发布者；请从官方 GitHub Releases 下载。\n",
         encoding="utf-8-sig",
@@ -165,10 +177,7 @@ def build_package(runtime_src: Path, output_dir: Path, version: str) -> Path:
         shutil.rmtree(build)
     package = build / f"{APP_NAME}-{version}-windows-x64"
     backend = package / "backend"
-    backend.mkdir(parents=True)
-    for name in ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "scout_workshop.py", "scout_collect.py", "scout_scan.py", "VERSION"):
-        shutil.copy2(ROOT / name, backend / name)
-    shutil.copytree(ROOT / "web", backend / "web")
+    copy_backend(backend)
     for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / name, package / name)
     runtime = backend / "runtime"
@@ -178,7 +187,7 @@ def build_package(runtime_src: Path, output_dir: Path, version: str) -> Path:
     generate_icon_png(package / "app-icon.png")
     generate_icon_ico(package / "app-icon.png", package / "app-icon.ico")
     build_native_host(package)
-    write_launcher(package)
+    write_launcher(package, version)
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = output_dir / f"{APP_NAME}-{version}-windows-x64.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:

@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/scout-workspace.css">
   <script src="/house-art.js" defer></script>
   <script src="/scout-art.js" defer></script>
+  <script src="/forest-art.js" defer></script>
+  <script src="/scout-journey.js" defer></script>
   <script src="/scout-workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
@@ -57,6 +59,7 @@
         <div class="town-scene" id="town-scene" tabindex="0" role="region" aria-label="像素小镇地图" aria-describedby="map-help">
           <div class="map-world" id="map-world"></div>
           <div class="map-caption"><span class="live-dot"></span><span>小镇漫游</span><span class="caption-divider"></span><span id="resident-count">等待伙伴回家</span><span class="caption-divider"></span><span class="pan-hint">按住拖动探索</span></div>
+          <div class="scout-map-controls" data-map-control><button type="button" id="map-locate-scout">查看星探</button><button type="button" id="map-forest">北部森林 ↑</button><label><input id="map-follow-scout" type="checkbox">跟随星探</label><span id="map-scout-status" role="status" aria-live="polite">在观察站</span></div>
           <span class="map-coordinate" aria-hidden="true">STARHAVEN · 01</span>
           <button class="garden-sign" data-map-control data-open-view="growth"><svg><use href="#i-leaf"/></svg><span>一起成长的小花园</span><span>↗</span></button>
           <div class="map-tip" id="map-help"><svg aria-hidden="true"><use href="#i-chat"/></svg><span>拖动探索 · 点击伙伴聊天<span class="keyboard-map-help"> · 方向键漫游</span></span></div>
@@ -69,17 +72,19 @@
 
       <section id="view-scout" class="view content-view scout-view" role="tabpanel" aria-labelledby="tab-scout" hidden>
         <div class="scout-heading"><div><p class="eyebrow">SCOUT'S OBSERVATORY</p><h1>星探的观察站</h1><p>把远方的新发现，带回小镇慢慢研究。</p></div><button type="button" class="text-button" data-open-view="town">回到小镇 →</button></div>
+        <div class="scout-observatory-actions"><button type="button" class="secondary-button" id="scout-locate">在地图上查看星探 →</button><span id="scout-inventory-summary">正在清点材料…</span></div>
         <div class="scout-scene-tabs" role="group" aria-label="观察站场景"><button type="button" data-scout-scene="yard" aria-pressed="true">院子 · 材料架</button><button type="button" data-scout-scene="room" aria-pressed="false">室内 · 资料书架</button></div>
         <div class="scout-stage-layout">
           <div class="scout-stage" id="scout-stage"><div class="scout-scene-canvas"><div id="scout-scene-art" class="scout-scene-art" aria-hidden="true"></div><div id="scout-scene-labels" class="scout-scene-labels"></div></div><div class="scout-scene-caption" id="scout-scene-caption">观察站正在开门…</div></div>
           <aside class="scout-job-card" aria-label="星探采集进度">
             <div class="scout-job-title"><img src="/assets/scout.svg" alt="星探"><div><strong>星探</strong><span>开源研究员 · 采集员</span></div></div>
             <ol class="scout-steps" id="scout-steps"></ol>
+            <p class="scout-journey-message" id="scout-journey-message" role="status" aria-live="polite">行动：在观察站</p>
             <p class="scout-job-message" id="scout-job-message" role="status" aria-live="polite">正在查看采集记录…</p>
             <details class="scout-job-errors" id="scout-job-errors" hidden><summary>查看未完成的原因</summary><div id="scout-job-error-list"></div></details>
             <details class="scout-job-errors" id="scout-job-trail" hidden><summary>这次出发的足迹</summary><div id="scout-job-trail-list"></div></details>
             <button type="button" class="primary-button scout-start" id="scout-start" disabled>让星探出发 <span>→</span></button>
-            <p class="scout-job-note">寻找公开开源项目，取回源码并整理材料。</p>
+            <p class="scout-job-note">工作与行走同时进行；取得的源码先安全保存，运回院子后上架。</p>
           </aside>
         </div>
         <p id="scout-error" class="form-error" role="alert" hidden></p>

@@ -6,12 +6,21 @@
   const $ = selector => document.querySelector(selector);
   const activePhases = new Set(["queued", "searching", "collecting", "storing"]);
   const phases = { idle: "在观察站等你", queued: "准备出发", searching: "正在寻找项目", collecting: "正在取回材料", storing: "正在整理材料", completed: "本次采集已结束", partial: "部分材料已带回", failed: "采集遇到困难", interrupted: "上次采集中断" };
-  const sceneState = { data: null, scene: "yard", library: "materials", loading: false, starting: false, saving: false, dirty: false, timer: null, detailRequest: 0, map: null, signature: "", listSignature: "" };
+  const sceneState = { data: null, scene: "yard", library: "materials", loading: false, starting: false, saving: false, dirty: false, timer: null, detailRequest: 0, map: null, signature: "", listSignature: "", clockOffset: 0, following: false, animation: null, lastFrame: 0, actionSignature: "" };
   let host;
   const arr = value => Array.isArray(value) ? value : [];
   const count = value => Math.max(0, Number(value) || 0);
   const phase = () => sceneState.data?.job?.phase || "idle";
   const busy = () => activePhases.has(phase());
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const journey = () => window.StarhavenScoutJourney.sample(sceneState.data?.journey, Date.now() + sceneState.clockOffset, reducedMotion.matches);
+  const travelling = () => sceneState.data?.journey && !journey().canStart;
+  const actionNames = { outbound: "沿道路前往森林", working: "在森林寻找和整理", returning: "正在返回观察站", unloading: "在材料架旁卸货", home: "在观察站等你" };
+  function actionLabel(action) {
+    if (action.phase === "returning") return action.cargo ? `带着 ${action.cargo} 份材料回家` : "空车返回观察站";
+    if (action.phase === "unloading") return `正在上架 ${action.cargo} 份材料`;
+    return actionNames[action.phase];
+  }
   const date = value => {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? "时间未记录" : parsed.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
@@ -25,7 +34,7 @@
   }
   function imageParams() {
     const data = sceneState.data || {};
-    return { phase: phase(), materialCount: count(data.counts?.raw ?? arr(data.materials).filter(item => item.source_status !== "missing").length), rawCount: phase() === "storing" ? 1 : 0, bookCount: count(data.counts?.books ?? arr(data.books).length) };
+    return { phase: journey().phase === "home" ? "idle" : phase(), materialCount: count(data.counts?.rack ?? data.counts?.raw ?? arr(data.materials).filter(item => item.source_status !== "missing").length), rawCount: journey().phase === "unloading" ? journey().cargo : 0, bookCount: count(data.counts?.books ?? arr(data.books).length) };
   }
   function safeURL(value, report = false) {
     if (typeof value !== "string") return null;
@@ -51,6 +60,7 @@
     const data = sceneState.data || {};
     $("#scout-material-count").textContent = count(data.counts?.materials ?? arr(data.materials).length);
     $("#scout-book-count").textContent = count(data.counts?.books ?? arr(data.books).length);
+    $("#scout-inventory-summary").textContent = `已保存 ${count(data.counts?.raw)} 份 · 运送中 ${count(data.counts?.in_transit)} 份 · 已上架 ${count(data.counts?.rack ?? data.counts?.raw)} 份`;
   }
   function selectLibrary(value) {
     sceneState.library = value;
@@ -95,7 +105,7 @@
       labels.append(hotspot(`材料架 · ${params.materialCount}`, 38, 5, () => selectLibrary("materials")), hotspot("采集手推车", 81, 62, () => selectLibrary("materials")));
     }
     $("#scout-scene-caption").textContent = room ? "查资料、读源码，把好发现留在书架上。" : (busy() ? phases[phase()] : "原木是待研究的项目材料，书本是已有研究。首批材料等星探带回。");
-    if (!busy() && params.materialCount && !room) $("#scout-scene-caption").textContent = `${params.materialCount} 份项目材料已入库，点击材料架查看来源和风险。`;
+    if (!busy() && params.materialCount && !room) $("#scout-scene-caption").textContent = `${params.materialCount} 份项目材料已上架，点击材料架查看来源和风险。`;
   }
   function renderJob() {
     const current = phase();
@@ -115,8 +125,8 @@
       li.append(art(item[1]), text); list.append(li);
     }
     let message = job.message || phases[current] || "在观察站等你";
-    if (job.total && busy()) message += ` · 已入库 ${count(job.completed)} / ${count(job.total)}`;
-    $("#scout-job-message").textContent = message;
+    if (job.total && busy()) message += ` · 已保存 ${count(job.completed)} / ${count(job.total)}`;
+    $("#scout-job-message").textContent = `工作：${message}`;
     $("#scout-job-message").dataset.phase = current;
     const errors = arr(job.errors);
     $("#scout-job-errors").hidden = !errors.length;
@@ -128,8 +138,8 @@
       const status = $("#selected-profile .profile-status span:last-child");
       if (status) status.textContent = phases[current] || "在观察站等你";
     }
-    $("#scout-start").disabled = !sceneState.data || busy() || sceneState.starting;
-    $("#scout-start").textContent = sceneState.starting ? "正在准备…" : busy() ? "星探正在工作…" : ["failed", "interrupted", "partial"].includes(current) ? "再次出发 →" : "让星探出发 →";
+    $("#scout-start").disabled = !sceneState.data || busy() || travelling() || sceneState.starting;
+    $("#scout-start").textContent = sceneState.starting ? "正在准备…" : busy() ? "星探正在工作…" : travelling() ? "等星探返回并卸货…" : ["failed", "interrupted", "partial"].includes(current) ? "再次出发 →" : "让星探出发 →";
   }
   function renderSettings() {
     if (sceneState.dirty || sceneState.saving) return;
@@ -163,7 +173,10 @@
       const card = node("article", "scout-material-card");
       const heading = node("div", "scout-material-heading");
       heading.append(art(books ? "books" : "logs"), node("span", "scout-category", books ? "研究手记" : item.category || "开源项目"));
-      if (!books) heading.append(riskBadge(item));
+      if (!books) {
+        heading.append(riskBadge(item));
+        if (item.delivery === "in_transit") heading.append(node("span", "scout-delivery-tag", "已保存 · 运送中"));
+      }
       card.append(heading, node("h3", "", books ? item.title || "星探研究手记" : item.full_name || "项目材料"), node("p", "scout-material-description", item.description || item.summary || "项目资料与来源已收录。"));
       const meta = node("div", "scout-material-meta");
       if (books) meta.append(node("span", "", item.date || ""));
@@ -283,21 +296,86 @@
       yard.append(node("span", "scout-map-label", `材料架 · ${params.materialCount}`));
       yard.dataset.signature = signature;
     }
-    const sprite = world.querySelector('.map-resident[data-agent="scout"]');
+    let sign = world.querySelector(".forest-map-sign");
+    if (!sign) {
+      sign = node("button", "forest-map-sign", "北部森林公园"); sign.type = "button";
+      sign.setAttribute("aria-label", "北部森林公园，定位林间采集点");
+      sign.addEventListener("click", () => host.centerMap([1380, -240])); world.append(sign);
+    }
+    let apron = world.querySelector(".scout-yard-path");
+    if (!apron) {
+      apron = node("div", "scout-yard-path"); apron.setAttribute("aria-hidden", "true");
+      apron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 214 238" shape-rendering="crispEdges"><path d="M0 0h104v84h12v120h98v28H90V96H78V22H0Z" fill="#c9c69e"/><path d="M0 4h100v84h12v120h102v20H94V92H82V18H0Z" fill="#e7ddbb"/><path d="M0 8h96v84h12v120h106v12H98V88H86V14H0Z" fill="#ede4c8"/></svg>';
+      world.append(apron);
+    }
+    let cargo = world.querySelector(".forest-cargo");
+    if (!cargo) { cargo = node("div", "forest-cargo"); cargo.setAttribute("aria-hidden", "true"); world.append(cargo); }
+    paintJourney();
+    animate();
+  }
+  function stopFollowing() {
+    sceneState.following = false;
+    const control = $("#map-follow-scout"); if (control) control.checked = false;
+  }
+  function locate() {
+    host.showView("town");
+    host.centerMap(journey().point);
+  }
+  function paintJourney() {
+    const action = journey(), world = sceneState.map?.world;
+    const sprite = world?.querySelector('.map-resident[data-agent="scout"]');
     if (sprite) {
-      sprite.dataset.scoutPhase = phase();
-      const mapName = sprite.querySelector(".map-name");
-      if (mapName && busy()) mapName.textContent = `星探 · ${phases[phase()]}`;
-      else if (mapName) mapName.textContent = host.getState()?.agents?.find(agent => agent.id === "scout")?.name || "星探";
-      const bubble = sprite.querySelector(".resident-bubble");
-      if (bubble) bubble.textContent = sceneState.data?.job?.message || phases[phase()] || "来观察站看看新发现。";
+      sprite.style.left = `${Math.round(action.point[0])}px`;
+      sprite.style.top = `${Math.round(action.point[1])}px`;
+      sprite.dataset.action = action.phase;
+      sprite.dataset.direction = action.direction;
+      sprite.classList.toggle("is-walking", action.moving);
+      if (sceneState.following && host.getView() === "town") host.centerMap(action.point);
+    }
+    const label = actionLabel(action);
+    const firstError = arr(sceneState.data?.job?.errors)[0];
+    const failure = ["failed", "partial", "interrupted"].includes(phase()) ? (typeof firstError === "string" ? firstError : firstError?.message || firstError?.error) || sceneState.data?.journey?.message || sceneState.data?.job?.message || "" : "";
+    const signature = JSON.stringify([action.phase, action.cargo, phase(), failure, sceneState.data?.job?.message]);
+    if (signature === sceneState.actionSignature && sprite?.dataset.actionSignature === signature) return;
+    sceneState.actionSignature = signature;
+    $("#scout-journey-message").textContent = `行动：${label}`;
+    $("#map-scout-status").textContent = failure ? `${action.phase === "home" ? "已返回" : label} · ${failure}` : label;
+    $("#map-scout-status").title = failure || label;
+    if (sprite) {
+      sprite.dataset.actionSignature = signature;
+      const name = host.getState()?.agents?.find(agent => agent.id === "scout")?.name || "星探";
+      sprite.querySelector(".map-name").textContent = action.phase === "home" ? name : `${name} · ${label}`;
+      sprite.querySelector(".resident-bubble").textContent = failure || sceneState.data?.job?.message || label;
+      sprite.setAttribute("aria-label", `${name}，${label}${failure ? "，" + failure : ""}，点击对话`);
       let tool = sprite.querySelector(".scout-carried-tool");
-      if (busy()) {
+      if (action.phase !== "home") {
         if (!tool) { tool = node("span", "scout-carried-tool"); tool.setAttribute("aria-hidden", "true"); sprite.append(tool); }
-        tool.innerHTML = window.StarhavenScoutArt.icon(phase() === "searching" ? "compass" : phase() === "storing" ? "rack" : "cart");
+        const kind = action.phase === "outbound" || phase() === "searching" ? "compass" : "cart";
+        tool.innerHTML = window.StarhavenScoutArt.icon(kind);
+        if (["returning", "unloading"].includes(action.phase) && action.cargo) {
+          const logs = node("span", "scout-cart-cargo"); logs.innerHTML = window.StarhavenForestArt.cargo(action.cargo); tool.append(logs);
+        }
       } else tool?.remove();
     }
+    const cargo = world?.querySelector(".forest-cargo");
+    if (cargo) {
+      cargo.hidden = action.phase !== "working" || !action.cargo;
+      cargo.innerHTML = window.StarhavenForestArt.cargo(action.cargo);
+    }
   }
+  function animate() {
+    if (sceneState.animation !== null || document.hidden) return;
+    sceneState.animation = requestAnimationFrame(now => {
+      sceneState.animation = null;
+      const interval = reducedMotion.matches ? 1000 : 40;
+      if (now - sceneState.lastFrame > interval) {
+        sceneState.lastFrame = now;
+        if (host.getView() === "town" || host.getView() === "scout") paintJourney();
+      }
+      if (travelling() || busy()) animate();
+    });
+  }
+
   async function refresh() {
     if (!host || sceneState.loading) return;
     clearTimeout(sceneState.timer);
@@ -305,17 +383,19 @@
     try {
       const data = await host.api("/api/scout/workspace");
       sceneState.data = data;
+      const serverNow = window.StarhavenScoutJourney.epoch(data.journey?.server_now);
+      sceneState.clockOffset = serverNow ? serverNow - Date.now() : 0;
       error(""); counts(); renderJob(); renderSettings(); renderScene(); renderLibrary();
       if (sceneState.map) renderMap(sceneState.map.world, sceneState.map.map);
     } catch (err) {
       error(err.message); $("#scout-start").disabled = true;
     } finally {
       sceneState.loading = false;
-      sceneState.timer = setTimeout(() => { if (document.hidden) { sceneState.timer = null; return; } refresh(); }, busy() ? 1800 : 15000);
+      sceneState.timer = setTimeout(() => { if (document.hidden) { sceneState.timer = null; return; } refresh(); }, busy() || travelling() ? 1800 : 15000);
     }
   }
   async function start() {
-    if (busy() || sceneState.starting) return;
+    if (busy() || travelling() || sceneState.starting) return;
     sceneState.starting = true; error(""); renderJob();
     try {
       await host.api("/api/scout/collect", { method: "POST", body: {} });
@@ -338,14 +418,19 @@
     document.querySelectorAll("[data-scout-scene]").forEach(button => button.addEventListener("click", () => selectScene(button.dataset.scoutScene)));
     document.querySelectorAll("[data-scout-library]").forEach(button => button.addEventListener("click", () => selectLibrary(button.dataset.scoutLibrary)));
     $("#scout-start").addEventListener("click", start);
+    $("#scout-locate").addEventListener("click", locate);
+    $("#map-locate-scout").addEventListener("click", locate);
+    $("#map-forest").addEventListener("click", () => { stopFollowing(); host.centerMap([1380, -240]); });
+    $("#map-follow-scout").addEventListener("change", event => { sceneState.following = event.target.checked; if (sceneState.following) locate(); });
+    reducedMotion.addEventListener?.("change", () => { paintJourney(); animate(); });
     $("#scout-schedule").addEventListener("submit", saveSettings);
     $("#scout-schedule").addEventListener("input", () => { sceneState.dirty = true; });
     $("#scout-search").addEventListener("input", renderLibrary);
     $("#scout-close-material").addEventListener("click", () => $("#scout-material-dialog").close());
     $("#scout-material-dialog").addEventListener("close", () => { sceneState.detailRequest++; });
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); animate(); } });
     window.addEventListener("online", refresh);
     refresh();
   }
-  window.StarhavenScoutWorkspace = { init, refresh, renderMap };
+  window.StarhavenScoutWorkspace = { init, refresh, renderMap, locate, stopFollowing };
 })();

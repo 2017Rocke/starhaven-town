@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from scout_scan import redact_text
+from scout_journey import journey_state
 
 
 LOCAL_TZ = dt.timezone(dt.timedelta(hours=8), name="Asia/Shanghai")
@@ -251,6 +252,12 @@ class ScoutWorkshop:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(collection_jobs)")}
             if "recent_events" not in columns:
                 db.execute("ALTER TABLE collection_jobs ADD COLUMN recent_events TEXT NOT NULL DEFAULT '[]'")
+            # Old work is already home. Only jobs created after this migration
+            # take a trip, including after an upgrade or application restart.
+            if "journey_version" not in columns:
+                db.execute("ALTER TABLE collection_jobs ADD COLUMN journey_version INTEGER NOT NULL DEFAULT 0")
+            if "journey_delivered_at" not in columns:
+                db.execute("ALTER TABLE collection_jobs ADD COLUMN journey_delivered_at TEXT")
             defaults = {"daily_enabled": False, "daily_time": "09:00", "daily_limit": 3, "last_run_date": None}
             for key, value in defaults.items():
                 db.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, json.dumps(value)))
@@ -290,6 +297,32 @@ class ScoutWorkshop:
         result["errors"] = json.loads(result["errors"])
         result["recent_events"] = json.loads(result["recent_events"])
         return result
+
+    def _journey(self, job, cargo_count=0, *, now=None):
+        result = journey_state(job, now or self._time(), cargo_count)
+        if (result["phase"] == "home" and result["home_at"] and
+                job.get("journey_version") == 1 and not job.get("journey_delivered_at")):
+            # A one-way completion marker prevents clock corrections from
+            # moving already delivered materials back out of their rack.
+            with self.db() as db:
+                db.execute("UPDATE collection_jobs SET journey_delivered_at=? WHERE id=? AND journey_delivered_at IS NULL",
+                           (result["home_at"], job["id"]))
+            job["journey_delivered_at"] = result["home_at"]
+        return result
+
+    def _delivery(self, metadata, journeys=None):
+        job_id = metadata.get("job_id")
+        journey = journeys.get(job_id) if journeys is not None else None
+        if journeys is None and job_id:
+            with self.db() as db:
+                row = db.execute("SELECT * FROM collection_jobs WHERE id=?", (job_id,)).fetchone()
+            if row:
+                job = dict(row)
+                job["errors"] = json.loads(job["errors"])
+                journey = self._journey(job)
+        pending = bool(journey and journey["phase"] != "home")
+        return dict(delivery="in_transit" if pending else "delivered", delivery_job_id=job_id,
+                    delivered_at=None if pending else (journey or {}).get("home_at") or metadata.get("collected_at"))
 
     def _update_job(self, identity, **values):
         with self.lock, self.db() as db:
@@ -331,15 +364,18 @@ class ScoutWorkshop:
                 raise WorkshopError(503, "小镇正在关闭")
             if self.worker is not None and self.worker.is_alive():
                 raise WorkshopError(409, "星探正在采集，请等待本次出发结束")
+            if not self._journey(self._latest_job())["can_start"]:
+                raise WorkshopError(409, "星探还在返回观察站或卸货，请等他回到材料架后再出发")
             identity, timestamp = uuid.uuid4().hex, self._now()
             with self.db() as db:
-                db.execute("INSERT INTO collection_jobs(id,phase,message,total,started_at,trigger) VALUES (?,?,?,?,?,?)",
+                db.execute("INSERT INTO collection_jobs(id,phase,message,total,started_at,trigger,journey_version) VALUES (?,?,?,?,?,?,1)",
                            (identity, "searching", "正在核对历史资料，寻找未收录的公开项目。", limit, timestamp, trigger))
                 db.execute("UPDATE settings SET value=? WHERE key='last_run_date'", (json.dumps(self._time().date().isoformat()),))
             self._update_job(identity, phase="searching", message="正在核对历史资料，寻找未收录的公开项目。")
             self.worker = threading.Thread(target=self._run_collection, args=(identity, limit), name="scout-collect-" + identity[:8], daemon=True)
             self.worker.start()
-        return dict(job=self._latest_job())
+        state = self.workspace()
+        return dict(job=state["job"], journey=state["journey"])
 
     def _progress(self, identity, event):
         if not isinstance(event, dict):
@@ -402,7 +438,7 @@ class ScoutWorkshop:
                     if self._seen_candidate(metadata, names, identities):
                         skipped += 1
                         continue
-                    self._update_job(identity, phase="storing", message="正在将真实源码与出处放入材料架。")
+                    self._update_job(identity, phase="storing", message="正在保存真实源码与出处，整理待运回的材料。")
                     if self._publish(pending, metadata, job_id=identity):
                         completed += 1
                         if metadata.get("source_status") != "ok":
@@ -430,7 +466,7 @@ class ScoutWorkshop:
             partial = bool(failed or errors or discovered.get("partial"))
             phase = "partial" if completed and partial else "failed" if partial and not completed else "completed"
             if completed:
-                message = "已搬回 %d 份真实材料；静态标注仍需人工复核。" % completed
+                message = "已保存 %d 份真实材料；静态标注仍需人工复核。" % completed
                 if partial:
                     message += "部分来源或源码有缺口，已保存的材料不会丢失；请查看材料覆盖范围。"
             elif partial:
@@ -660,12 +696,13 @@ class ScoutWorkshop:
                 pass
         return None
 
-    def _material(self, row, detailed=False):
+    def _material(self, row, detailed=False, journeys=None):
         metadata = json.loads(row["metadata"])
         keys = ("full_name", "description", "category", "stars", "language", "license", "owner", "repo_url", "sha",
                 "collected_at", "source_status", "risk", "file_count")
         result = {key: metadata.get(key) for key in keys}
         result["id"] = row["id"]
+        result.update(self._delivery(metadata, journeys))
         root = self._storage_root(row)
         files = metadata.get("files", [])
         with self.lock:
@@ -699,13 +736,27 @@ class ScoutWorkshop:
         return dict(material=self._material(row, detailed=True))
 
     def workspace(self):
-        with self.db() as db:
-            rows = db.execute("SELECT * FROM materials ORDER BY collected_at DESC,rowid DESC").fetchall()
-            seen = db.execute("SELECT count(*) FROM seen_repositories").fetchone()[0]
-        materials = [self._material(row) for row in rows]
+        # Use one consistent snapshot while a collection can be saving a bundle.
+        with self.lock:
+            now = self._time()
+            with self.db() as db:
+                rows = db.execute("SELECT * FROM materials ORDER BY collected_at DESC,rowid DESC").fetchall()
+                seen = db.execute("SELECT count(*) FROM seen_repositories").fetchone()[0]
+                pending_jobs = db.execute("SELECT * FROM collection_jobs WHERE journey_version=1").fetchall()
+            journeys = {}
+            for row in pending_jobs:
+                recorded_job = dict(row)
+                recorded_job["errors"] = json.loads(recorded_job["errors"])
+                journeys[row["id"]] = self._journey(recorded_job, now=now)
+            materials = [self._material(row, journeys=journeys) for row in rows]
+            job = self._latest_job()
+            cargo = sum(bool(job["id"]) and item["delivery_job_id"] == job["id"] and item["source_status"] != "missing" for item in materials)
+            journey = self._journey(job, cargo, now=now)
         books = self.books()
-        return dict(job=self._latest_job(), materials=materials, books=books, settings=self.settings(),
+        return dict(job=job, journey=journey, materials=materials, books=books, settings=self.settings(),
                     counts=dict(materials=len(materials), raw=sum(item["source_status"] != "missing" for item in materials),
+                                rack=sum(item["source_status"] != "missing" and item["delivery"] == "delivered" for item in materials),
+                                in_transit=sum(item["source_status"] != "missing" and item["delivery"] == "in_transit" for item in materials),
                                 books=len(books), risk_review=len(materials), history_seen=seen))
 
     def chat_summary(self):
@@ -719,6 +770,8 @@ class ScoutWorkshop:
     def maybe_schedule(self):
         with self.lock:
             if self.closed or self.worker is not None:
+                return False
+            if not self._journey(self._latest_job())["can_start"]:
                 return False
             settings = self.settings()
             current = self._time()

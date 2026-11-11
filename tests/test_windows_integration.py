@@ -4,11 +4,13 @@ Run only on a disposable Windows build/test account. The installer creates that
 account's Start menu / desktop shortcuts and an uninstall registration.
 """
 import base64
+from contextlib import closing
 import json
 import os
 from pathlib import Path
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,15 @@ import uuid
 
 APP = os.environ.get("STARHAVEN_WINDOWS_APP")
 INSTALLER = os.environ.get("STARHAVEN_WINDOWS_INSTALLER")
+
+
+def fresh_residents(data_dir):
+    """Verify the packaged defaults were used, including both core characters."""
+    with closing(sqlite3.connect(str(data_dir / "town.sqlite3"))) as connection:
+        rows = connection.execute("SELECT id,name FROM agents").fetchall()
+    identities = {row[0] for row in rows}
+    names = {row[1] for row in rows}
+    return len(rows), identities, names
 
 
 def evidence_directory():
@@ -165,8 +176,13 @@ class WindowsNativeIntegrationTest(unittest.TestCase):
                 self.assertTrue(payload.get("ok"), payload)
                 self.assertTrue(payload.get("graceful_shutdown"), payload)
                 self.assertIn("星栖", payload["title"])
+                self.assertEqual(payload.get("residents"), 6, payload)
                 self.assertTrue((data_dir / "town.sqlite3").is_file())
                 self.assertTrue(Path(payload["data_directory"]).samefile(data_dir), "native app used a different data directory")
+                count, identities, names = fresh_residents(data_dir)
+                self.assertEqual(count, 6)
+                self.assertTrue({"linghang", "scout"}.issubset(identities), identities)
+                self.assertTrue({"吉吉", "东日", "科德", "爬山佬"}.issubset(names), names)
                 if attempt:
                     self.assertEqual((data_dir / "keep-me.txt").read_text(encoding="utf-8"), "升级后保留")
                 (data_dir / "keep-me.txt").write_text("升级后保留", encoding="utf-8")
@@ -223,7 +239,11 @@ $exists = Test-Path -LiteralPath $link -PathType Leaf
                 self.assertEqual(exit_code, 0, launch)
                 self.assertTrue(launch.get("ok"), launch)
                 self.assertTrue(launch.get("graceful_shutdown"), launch)
-                self.assertGreater(launch.get("residents", 0), 0, launch)
+                self.assertEqual(launch.get("residents"), 6, launch)
+                count, identities, names = fresh_residents(Path(temporary) / "桌面启动 数据")
+                self.assertEqual(count, 6)
+                self.assertTrue({"linghang", "scout"}.issubset(identities), identities)
+                self.assertTrue({"吉吉", "东日", "科德", "爬山佬"}.issubset(names), names)
             finally:
                 uninstaller = target / "unins000.exe"
                 if uninstaller.is_file():

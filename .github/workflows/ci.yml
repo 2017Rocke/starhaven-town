@@ -31,4 +31,7 @@ jobs:
       - run: node --check web/house-art.js
       - run: node --check web/scout-art.js
       - run: node --check web/scout-workspace.js
+      - run: node --check web/forest-art.js
+      - run: node --check web/scout-journey.js
+      - run: node tests/test_scout_journey.js
       - run: python scripts/export_source.py
