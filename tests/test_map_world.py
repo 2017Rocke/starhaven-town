@@ -201,10 +201,10 @@ class MapWorldTest(unittest.TestCase):
                 self.assertEqual({key: value for key, value in house.items() if key != "name"},
                                  {key: value for key, value in renamed.items() if key != "name"})
 
-    def test_profession_remains_primary_and_all_nine_styles_are_available(self):
+    def test_profession_remains_primary_and_all_ten_styles_are_available(self):
         roles = {"主管": "command", "软件架构工程师": "architecture", "开发工程师": "workshop",
                  "园艺师": "farm", "音乐人": "music", "股票分析师": "finance",
-                 "教学老师": "school", "开源研究员": "observatory"}
+                 "教学老师": "school", "开源研究员": "observatory", "钓鱼佬": "angling"}
         for role, style in roles.items():
             with self.subTest(role=role):
                 house = design_house("resident", "伙伴", role,

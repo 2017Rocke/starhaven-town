@@ -14,6 +14,7 @@
     finance: { roof: ["#91a277", "#b1bc8d", "#74875f"], wall: ["#d0c49b", "#e7dcba", "#b3a984"], wood: ["#988b65", "#bfb085", "#787351"] },
     school: { roof: ["#b58e6f", "#cfa98b", "#93765d"], wall: ["#ded3ae", "#eee4c7", "#c3b690"], wood: ["#a28d68", "#c8b48a", "#817351"] },
     cottage: { roof: ["#b88b6c", "#d0a384", "#966f54"], wall: ["#dfd1ac", "#eee2c2", "#c4b58f"], wood: ["#a18a65", "#c7b087", "#81704f"] },
+    angling: { roof: ["#c2ae7f", "#d8c493", "#9e8c63"], wall: ["#e2d9bd", "#efe7cd", "#c8bda0"], wood: ["#7f8f8a", "#a5b2ab", "#61716c"] },
   };
   const C = {
     stone: "#b4b59b", stoneLight: "#cfceb2", stoneDark: "#929b81",
@@ -35,7 +36,7 @@
   }
   function resolve(agent) {
     const style = Object.prototype.hasOwnProperty.call(STYLES, agent?.house?.style) ? agent.house.style : "cottage";
-    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", cottage: "garden" };
+    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden" };
     return { style, p: STYLES[style], motif: agent?.house?.motif || defaults[style], variant: Math.abs(Number(agent?.house?.variant) || 0) % 4 };
   }
   function stoneBase(g, x, y, w) {
@@ -195,7 +196,185 @@
     rect(g, x, y, width, 4, p.wood[1]); rect(g, x, y + 12, width, 4, p.wood[1]);
     rect(g, x + 4, y, 4, 24, p.wood[2]); rect(g, x + width - 8, y, 4, 24, p.wood[2]);
   }
-
+  // Reed thatch: a shallower pitch than the clay roofs, with ragged eaves.
+  function reedRoof(g, p, x, y, width, rows) {
+    for (let row = 0; row < rows; row++) {
+      const inset = (rows - row - 1) * 4;
+      const rx = x + inset, rw = width - inset * 2, ry = y + row * 4;
+      if (rw <= 0) continue;
+      rect(g, rx, ry, rw, 4, row % 3 === 2 ? p.roof[1] : p.roof[0]);
+      rect(g, rx, ry, 4, 4, p.roof[1]);
+      rect(g, rx + rw - 4, ry, 4, 4, p.roof[2]);
+      if (row % 2) for (let tile = rx + 12; tile < rx + rw - 12; tile += 20) rect(g, tile, ry, 8, 2, p.roof[2]);
+    }
+    for (let tooth = x - 4; tooth < x + width + 4; tooth += 12) rect(g, tooth, y + rows * 4, 8, 4, p.roof[1]);
+    for (let tooth = x + 2; tooth < x + width; tooth += 24) rect(g, tooth, y + rows * 4 + 4, 8, 4, p.roof[2]);
+    rect(g, x + width / 2 - 40, y - 8, 80, 8, p.roof[2]);
+    rect(g, x + width / 2 - 32, y - 4, 64, 4, p.roof[1]);
+  }
+  // Stepped village pond in the same water colours as the meadow decorations.
+  function pond(g, x, y, width, height) {
+    rect(g, x - 12, y - 8, width + 24, height + 16, "#c6d2a4");
+    rect(g, x - 8, y - 4, width + 16, height + 8, "#d2d7b4");
+    rect(g, x - 4, y - 4, width + 8, height + 8, "#dcdcb8");
+    rect(g, x, y, width, height, "#8fb5ae");
+    rect(g, x + 4, y + 4, width - 8, height - 8, "#a6cbca");
+    rect(g, x + 12, y + 12, width - 24, height - 24, "#b6d6d1");
+    // Cut the four corners so the water reads as a pond, not a pool.
+    for (const [cx, cy] of [[x, y], [x + width - 8, y], [x, y + height - 8], [x + width - 8, y + height - 8]]) {
+      rect(g, cx, cy, 8, 8, "#dcdcb8");
+    }
+    // Ripples stay inside the water for narrow ponds as well.
+    rect(g, x + 16, y + 10, 20, 4, "#d4e7d9");
+    rect(g, x + 52, y + 18, 16, 4, "#d4e7d9");
+    rect(g, x + 28, y + 26, 12, 4, "#cfe2d2");
+  }
+  function jetty(g, p, x, y, width) {
+    for (let plank = x; plank < x + width; plank += 16) {
+      rect(g, plank, y, 12, 12, plank % 32 ? p.wood[0] : p.wood[1]);
+      rect(g, plank + 12, y + 4, 4, 8, p.wood[2]);
+    }
+    rect(g, x, y, width, 4, p.wood[1]);
+    rect(g, x, y + 8, width, 4, p.wood[2]);
+    rect(g, x + 4, y + 12, 4, 16, p.wood[2]);
+    rect(g, x + width - 8, y + 12, 4, 16, p.wood[2]);
+    // A short ladder gives the deck a reason to sit above the water.
+    rect(g, x + width - 20, y + 12, 4, 16, p.wood[0]);
+    rect(g, x + width - 20, y + 16, 12, 4, p.wood[0]);
+  }
+  function boat(g, p, x, y) {
+    rect(g, x, y, 48, 8, p.wood[1]);
+    rect(g, x + 4, y + 4, 40, 4, p.wood[2]);
+    rect(g, x + 4, y - 4, 40, 4, "#dfe3d2");
+    rect(g, x, y - 4, 4, 12, p.wood[0]);
+    rect(g, x + 44, y - 4, 4, 12, p.wood[0]);
+    rect(g, x + 16, y - 8, 16, 4, p.wood[0]);
+    rect(g, x + 20, y - 12, 8, 4, "#c98a5c");
+    rect(g, x + 52, y - 4, 4, 20, p.wood[2]);
+  }
+  function netRack(g, p, x, y, width) {
+    rect(g, x, y, 8, 56, p.wood[0]);
+    rect(g, x + width - 8, y, 8, 56, p.wood[0]);
+    rect(g, x, y, width, 8, p.wood[1]);
+    for (let i = 0; i < 4; i++) rect(g, x + 12 + i * 12, y + 8, 4, 36, C.cream);
+    for (let j = 0; j < 4; j++) rect(g, x + 8, y + 12 + j * 8, width - 16, 4, C.cream);
+    rect(g, x + 8, y + 48, width - 16, 4, p.wood[2]);
+    for (let i = 0; i < 4; i++) rect(g, x + 12 + i * 12, y + 2, 8, 8, i % 2 ? "#d8bf80" : "#c98a5c");
+  }
+  // Straw texture: short dashes staggered across every thatch row.
+  function thatchStreaks(g, p, x, y, width, rows) {
+    for (let row = 0; row < rows; row++) {
+      const inset = (rows - row - 1) * 4;
+      const rx = x + inset + 12, rw = width - inset * 2 - 24, ry = y + row * 4;
+      if (rw <= 32) continue;
+      for (let i = 0; i < 4; i++) {
+        const sx = rx + Math.floor((rw - 8) * (i + 1) / 5);
+        rect(g, sx, ry, 8, 4, row % 2 ? p.roof[2] : p.roof[1]);
+      }
+    }
+  }
+  // A row of stone footings under a wall.
+  function footings(g, x, y, width) {
+    for (let stone = x + 4; stone < x + width - 8; stone += 24) {
+      rect(g, stone, y, 16, 4, C.stoneLight);
+      rect(g, stone, y + 4, 16, 4, C.stoneDark);
+    }
+  }
+  // Two posts and a rail; balusters keep the porch from reading as a fence.
+  function porchRail(g, p, x, y, width) {
+    rect(g, x, y, width, 4, p.wood[1]);
+    rect(g, x, y + 12, width, 4, p.wood[0]);
+    for (let post = x + 8; post < x + width - 8; post += 16) rect(g, post, y + 4, 4, 8, p.wood[2]);
+  }
+  // Fish species are data, not bespoke drawings: a body profile in 2px rows,
+  // a tail span, a palette and a pattern. Adding a species means adding a row
+  // here, and the same renderer can draw it elsewhere later.
+  // Fish species are data: per-column top/bottom outlines, a palette, a tail
+  // midpoint and a pattern. Adding a species means adding one row here.
+  const FISH = {
+    carp: {
+      name: "鲤鱼", body: "#c8a86a", back: "#a8854e", belly: "#e6d6a8", fin: "#b3905a", mark: "#8f7342",
+      tailMid: 10, pattern: "scales",
+      top: [null, 8, 7, 6, 5, 5, 4, 4, 4, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6, 7, 8, null, null, null],
+      bottom: [null, 12, 13, 14, 15, 15, 16, 16, 16, 17, 17, 17, 17, 16, 16, 16, 15, 15, 14, 13, 12, null, null, null],
+    },
+    crucian: {
+      name: "鲫鱼", body: "#c9d2cc", back: "#9fb0ad", belly: "#e6eeea", fin: "#8fa5a2", mark: "#7d9492",
+      tailMid: 11, pattern: "none",
+      top: [null, 7, 6, 5, 4, 4, 3, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, null, null, null, null],
+      bottom: [null, 13, 14, 15, 16, 16, 17, 17, 17, 18, 18, 18, 17, 17, 17, 16, 16, 15, 15, 14, null, null, null, null],
+    },
+    trout: {
+      name: "鳟鱼", body: "#b9c6b2", back: "#8fa383", belly: "#dfe7d4", fin: "#7d9270", mark: "#6b8059",
+      tailMid: 10, pattern: "spots",
+      top: [null, 8, 7, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, null, null, null],
+      bottom: [null, 12, 13, 13, 14, 14, 15, 15, 15, 16, 16, 16, 16, 15, 15, 15, 14, 14, 14, 13, 13, null, null, null],
+    },
+  };
+  // A fish hangs by the tail: one 1px column per outline step, so the
+  // silhouette follows the species table instead of a rectangle block.
+  function driedFish(g, x, y, species = "crucian") {
+    const f = FISH[species] || FISH.crucian;
+    rect(g, x + 10, y - 10, 1, 10, "#8a7a5c");
+    rect(g, x + 9, y - 12, 3, 2, "#b9a06d");
+    f.top.forEach((top, i) => {
+      const bottom = f.bottom[i];
+      if (top == null || bottom == null) return;
+      rect(g, x + i, y + top, 1, bottom - top + 1, f.body);
+      rect(g, x + i, y + top, 1, 2, f.back);
+      rect(g, x + i, y + bottom - 1, 1, 2, f.belly);
+    });
+    // Forked tail: joint plus two swept lobes.
+    const mid = f.tailMid;
+    rect(g, x + 20, y + mid - 1, 1, 3, f.fin);
+    rect(g, x + 21, y + mid - 3, 2, 3, f.fin);
+    rect(g, x + 21, y + mid + 1, 2, 3, f.fin);
+    rect(g, x + 23, y + mid - 4, 1, 2, f.fin);
+    rect(g, x + 23, y + mid + 3, 1, 2, f.fin);
+    // Dorsal, pectoral and pelvic fins keep the species silhouette distinct.
+    rect(g, x + 8, y + f.top[10] - 1, 4, 1, f.fin);
+    rect(g, x + 9, y + f.top[10] - 2, 2, 1, f.fin);
+    rect(g, x + 5, y + f.bottom[8] - 1, 3, 1, f.fin);
+    rect(g, x + 10, y + f.bottom[12] - 1, 2, 1, f.fin);
+    // Head: eye pupil, highlight, gill arc and mouth notch.
+    rect(g, x + 3, y + 8, 2, 2, "#2f3f3c");
+    rect(g, x + 3, y + 7, 2, 1, f.belly);
+    rect(g, x + 5, y + 9, 1, 3, f.mark);
+    rect(g, x + 2, y + 10, 1, 1, f.mark);
+    // Species pattern.
+    if (f.pattern === "scales") {
+      for (let i = 0; i < 3; i++) {
+        rect(g, x + 7 + i * 3, y + 9, 2, 1, f.mark);
+        rect(g, x + 8 + i * 3, y + 12, 2, 1, f.mark);
+      }
+    } else if (f.pattern === "spots") {
+      for (const [sx, sy] of [[7, 7], [10, 8], [8, 12], [13, 11]]) rect(g, x + sx, y + sy, 2, 2, f.mark);
+    } else {
+      rect(g, x + 7, y + 7, 4, 1, "#f2f4e6");
+      rect(g, x + 8, y + 10, 3, 1, "#eef1e6");
+    }
+    // Fin rays along the tail joint.
+    rect(g, x + 20, y + mid, 1, 1, f.mark);
+  }
+  function fishSign(g, p, x, y, width = 56) {
+    // A bracketed board with a fish silhouette and two water dashes.
+    rect(g, x, y, width, 16, p.wood[2]);
+    rect(g, x + 4, y + 4, width - 8, 8, p.wall[1]);
+    rect(g, x, y, width, 4, p.wood[1]);
+    rect(g, x, y + 12, width, 4, p.wood[0]);
+    const fx = x + 6;
+    rect(g, fx + 4, y + 4, 12, 8, "#3f6e77");
+    rect(g, fx + 16, y, 4, 4, "#3f6e77");
+    rect(g, fx + 16, y + 12, 4, 4, "#3f6e77");
+    rect(g, fx + 20, y + 4, 4, 8, "#3f6e77");
+    rect(g, fx + 8, y + 4, 4, 4, C.cream);
+    // A hook mark and two water dashes finish the sign.
+    rect(g, x + width - 20, y - 4, 4, 12, p.wood[2]);
+    rect(g, x + width - 16, y + 4, 8, 4, "#7fa9ab");
+    // Iron brackets tie the board to the wall.
+    rect(g, x - 4, y - 4, 4, 24, p.wood[2]);
+    rect(g, x + width, y - 4, 4, 24, p.wood[2]);
+  }
   function house(agent) {
     const { style, p, motif, variant } = resolve(agent), g = group(`house-${style}`);
     rect(g, 28, 176, 184, 8, C.shadow); rect(g, 40, 184, 160, 4, C.shadow);
@@ -268,6 +447,89 @@
       rect(g, 120, 60, 4, 8, p.wood[0]);
       rect(g, 88, 100, 64, 12, p.wood[2]); rect(g, 92, 100, 56, 8, C.cream);
       rect(g, 112, 100, 4, 8, p.roof[0]); rect(g, 124, 100, 4, 8, C.green);
+    } else if (style === "angling") {
+      // Plot coordinates: the shared plot transform offsets every house by
+      // (40,18); this branch cancels it so the hut lines up with its yard.
+      const local = group("angling-house");
+      local.setAttribute("transform", "translate(-40 -18)");
+      g.append(local);
+
+      wall(local, p, 28, 80, 264, 96);
+      footings(local, 28, 176, 264);
+      reedRoof(local, p, 4, 8, 312, 16);
+      thatchStreaks(local, p, 4, 8, 312, 16);
+      // The stack is drawn over the thatch so it reads as a chimney on the roof.
+      chimney(local, p, 236, 28, 56);
+      for (let joint = 40; joint < 84; joint += 8) rect(local, 240, joint, 12, 2, p.wood[1]);
+
+      // Roof furniture: a slim ridge cap and stitching along the ridge.
+      for (let ridge = 88; ridge < 232; ridge += 16) rect(local, ridge, 4, 8, 4, p.roof[1]);
+      rect(local, 84, 8, 152, 4, p.roof[2]);
+      for (let stitch = 92; stitch < 228; stitch += 8) rect(local, stitch, 8, 4, 4, p.roof[2]);
+      for (let tooth = 16; tooth < 300; tooth += 28) rect(local, tooth, 76, 8, 4, p.roof[1]);
+      // Loose straw catches the light along the eave.
+      for (let tuft = 24; tuft < 296; tuft += 20) rect(local, tuft, 80, 8, 4, p.roof[1]);
+      // Mortar highlights where the plaster meets the eave.
+      for (let dash = 40; dash < 284; dash += 32) rect(local, dash, 84, 12, 4, p.wall[1]);
+
+      // Corner boards frame the plaster between the roof and the wainscot.
+      rect(local, 28, 80, 4, 96, p.wood[1]);
+      rect(local, 32, 80, 4, 96, p.wood[0]);
+      rect(local, 288, 80, 4, 96, p.wood[1]);
+      rect(local, 284, 80, 4, 96, p.wood[0]);
+
+      // Plank wainscot along the base keeps the plaster from reading generic.
+      rect(local, 28, 160, 264, 16, p.wood[0]);
+      rect(local, 28, 160, 264, 4, p.wood[1]);
+      for (let plank = 36; plank < 292; plank += 24) rect(local, plank, 160, 4, 16, p.wood[2]);
+      for (let bolt = 44; bolt < 292; bolt += 24) rect(local, bolt, 164, 4, 4, p.wood[1]);
+
+      windowFrame(local, p, 48, 88, 32, 28, true);
+      windowFrame(local, p, 240, 88, 32, 28, true);
+      windowFrame(local, p, 48, 124, 32, 32);
+      windowFrame(local, p, 240, 124, 32, 32);
+      for (const [wx, wy] of [[48, 88], [240, 88], [48, 124], [240, 124]]) {
+        rect(local, wx + 8, wy + 8, 8, 4, C.glassLight);
+        rect(local, wx + 8, wy + 16, 4, 4, C.glassLight);
+      }
+      // Shutter slats on the two upper windows.
+      for (const sx of [36, 84, 228, 276]) {
+        for (let slat = 92; slat < 112; slat += 8) rect(local, sx, slat, 8, 4, p.roof[2]);
+      }
+
+      // Porch: a thatch awning on two posts, with the sign on its gable.
+      rect(local, 124, 108, 72, 8, p.roof[1]);
+      rect(local, 124, 108, 72, 4, p.roof[2]);
+      for (let tile = 128; tile < 192; tile += 16) rect(local, tile, 112, 8, 2, p.roof[2]);
+      rect(local, 120, 112, 80, 4, p.wood[1]);
+      rect(local, 124, 116, 8, 60, p.wood[0]);
+      rect(local, 188, 116, 8, 60, p.wood[0]);
+      rect(local, 124, 116, 4, 60, p.wood[1]);
+      rect(local, 188, 116, 4, 60, p.wood[1]);
+      rect(local, 124, 124, 4, 4, p.wood[2]);
+      rect(local, 188, 124, 4, 4, p.wood[2]);
+      rect(local, 120, 172, 16, 4, C.stone);
+      rect(local, 180, 172, 16, 4, C.stone);
+
+      door(local, p, 140, 124);
+      fishSign(local, p, 128, 88, 64);
+      lantern(local, p, 196, 120);
+      // A bait barrel and a tackle crate flank the door in warm timber tones.
+      rect(local, 96, 150, 24, 24, "#b99d6f");
+      rect(local, 96, 150, 24, 4, "#cfb587");
+      rect(local, 96, 158, 24, 4, "#8f7a55");
+      rect(local, 96, 166, 24, 4, "#8f7a55");
+      rect(local, 100, 154, 16, 4, "#a98f63");
+      rect(local, 100, 170, 16, 4, "#a98f63");
+      rect(local, 204, 152, 24, 20, "#b99d6f");
+      rect(local, 204, 152, 24, 4, "#cfb587");
+      rect(local, 204, 164, 24, 4, "#8f7a55");
+      rect(local, 208, 152, 4, 20, "#8f7a55");
+      rect(local, 220, 152, 4, 20, "#8f7a55");
+      // Hinges and a knob finish the door.
+      rect(local, 136, 132, 4, 4, "#5c6b63");
+      rect(local, 136, 156, 4, 4, "#5c6b63");
+      rect(local, 172, 146, 4, 4, "#d3b579");
     } else {
       chimney(g, p, 180, 40, 44);
       wall(g, p, 28, 104, 184, 64); roof(g, p, 16, 48, 208, 13);
@@ -334,6 +596,49 @@
       for (let row = 0; row < 3; row++) { rect(g, 32, 184 + row * 8, 4, 4, C.green); rect(g, 44, 184 + row * 8, 52 - row * 8, 4, "#b9b794"); }
       rect(g, 32, 216, 4, 16, p.wood[2]); rect(g, 100, 216, 4, 16, p.wood[2]);
       crate(g, p, 212, 208, 32); flowerBox(g, p, 260, 208, 40); fence(g, p, 208, 212, 96);
+    } else if (style === "angling") {
+      // A drying rack of big silver fish on the left, the pond and its jetty on
+      // the right, and stepping stones from the doorstep down to the water.
+      // Three fish on a narrower rack; the doorway in front stays open grass.
+      rect(g, 12, 186, 8, 50, p.wood[0]);
+      rect(g, 112, 186, 8, 50, p.wood[0]);
+      rect(g, 12, 186, 108, 8, p.wood[1]);
+      rect(g, 12, 190, 108, 4, p.wood[2]);
+      for (const [fx, species] of [[24, "carp"], [54, "crucian"], [84, "trout"]]) driedFish(g, fx, 198, species);
+      // Cleats and a rope coil make the rack read as built, not drawn.
+      for (const [cx, cy] of [[12, 210], [112, 210], [12, 226], [112, 226]]) rect(g, cx, cy, 8, 4, p.wood[2]);
+      rect(g, 56, 188, 12, 4, "#d8bf80");
+      rect(g, 56, 192, 4, 4, "#b9a06d");
+      // A wooden pail waits under the rack, warm-toned so it reads as gear.
+      rect(g, 92, 222, 12, 12, "#b99d6f");
+      rect(g, 92, 222, 12, 4, "#cfb587");
+      rect(g, 92, 230, 12, 4, "#8f7a55");
+      rect(g, 92, 226, 12, 2, "#a98f63");
+      rect(g, 94, 218, 8, 4, "#8f7a55");
+      // Pond and jetty sit clear of the x125..195 doorway the resident walks in.
+      pond(g, 220, 196, 88, 36);
+      // Shore stones and lily pads sit on the water without hiding the jetty.
+      for (const [sx, sy] of [[244, 188], [268, 188], [292, 188]]) {
+        rect(g, sx, sy, 16, 4, "#c8cfa6");
+        rect(g, sx, sy + 4, 16, 4, "#b3c397");
+      }
+      for (const [sx, sy] of [[216, 232], [280, 232]]) {
+        rect(g, sx, sy, 16, 4, "#b3c397");
+        rect(g, sx, sy - 4, 16, 4, "#c8cfa6");
+      }
+      for (const [px, py] of [[226, 212], [252, 228], [288, 204]]) {
+        rect(g, px, py, 8, 4, "#8fb06a");
+        rect(g, px, py, 4, 4, "#a6c47e");
+      }
+      jetty(g, p, 196, 204, 56);
+      boat(g, p, 240, 216);
+      rect(g, 256, 208, 12, 4, p.wood[0]);
+      rect(g, 256, 212, 4, 4, p.wood[2]);
+      // Reeds mark the bank without covering open water.
+      for (const [rx, ry] of [[212, 192], [300, 192], [300, 216]]) {
+        rect(g, rx, ry, 4, 20, "#849d70"); rect(g, rx + 8, ry + 4, 4, 16, "#a1b480");
+        rect(g, rx + 6, ry - 4, 8, 8, "#a58f64");
+      }
     } else {
       flowerBox(g, p, 28, 204, 80); flowerBox(g, p, 216, 204, 76);
       rect(g, 44, 220, 52, 4, p.wood[1]); rect(g, 48, 224, 4, 12, p.wood[2]); rect(g, 88, 224, 4, 12, p.wood[2]);
@@ -344,7 +649,7 @@
 
   function labelY(agent) {
     // Four units above the main roof; detached smoke, flags and telescopes are ignored.
-    const roofAnchors = { command: 20, observatory: 16, architecture: 16, workshop: 44, farm: 44, music: 40, finance: 56, school: 8, cottage: 44 };
+    const roofAnchors = { command: 20, observatory: 16, architecture: 16, workshop: 44, farm: 44, music: 40, finance: 56, school: 8, angling: 4, cottage: 44 };
     return roofAnchors[resolve(agent).style];
   }
 

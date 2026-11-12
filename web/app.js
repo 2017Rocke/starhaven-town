@@ -40,6 +40,7 @@
     { id: "rancher", name: "牧场伙伴", color: "#b99d69" },
     { id: "scholar", name: "书卷学者", color: "#a297b5" },
     { id: "artist", name: "田园画家", color: "#bc947d" },
+    { id: "angler", name: "钓鱼佬", color: "#5f8f96" },
   ];
   const avatarFiles = new Set(avatarChoices.map(choice => choice.id));
   const chosenAvatar = agent => avatarFiles.has(agent?.avatar) ? agent.avatar : agent?.id === "scout" ? "scout" : "captain";

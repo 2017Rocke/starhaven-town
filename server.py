@@ -32,7 +32,7 @@ ACTIVE = ("queued", "running")
 TOWN_TZ = dt.timezone(dt.timedelta(hours=8), name="Asia/Shanghai")
 SUPPORTED_AVATARS = frozenset({
     "captain", "scout", "maker", "gardener", "engineer", "musician",
-    "architect", "rancher", "scholar", "artist", "resident",
+    "architect", "rancher", "scholar", "artist", "angler", "resident",
 })
 LEGACY_SCOUT_ROLE = "开源项目研究员"
 LEGACY_SCOUT_BIO = "住在观察站的开源研究员，收集有用的项目、阅读固定版本源码、梳理实现原理与风险线索。背包里装着新点子和可追溯的证据。"
@@ -90,6 +90,7 @@ HOUSE_STYLES = [
     ("finance", "行情小屋", [r"股票", r"金融", r"投资", r"交易", r"理财", r"基金", r"行情", r"证券"]),
     ("school", "研学小筑", [r"学习", r"教育", r"课程", r"教学", r"老师", r"讲解", r"学堂"]),
     ("observatory", "观察站", [r"研究", r"观察", r"情报", r"调查", r"探索", r"分析", r"星探", r"资料", r"阅读", r"记录"]),
+    ("angling", "垂钓小屋", [r"钓", r"垂钓", r"渔", r"鱼", r"船", r"桨", r"塘", r"湖畔", r"水边", r"码头"]),
     ("cottage", "温馨小屋", []),
 ]
 HOUSE_MOTIFS = [
@@ -111,6 +112,7 @@ STYLE_PALETTES = {
     "music": dict(wall="#c9bcc8", roof="#a096a4", trim="#7f7480", accent="#c0a060", dark="#58407a", light="#e8e0e6"),
     "finance": dict(wall="#c6b88c", roof="#8ea66b", trim="#6d855e", accent="#bca079", dark="#3e5c41", light="#e5dcbe"),
     "school": dict(wall="#ded6b5", roof="#c2936c", trim="#8a6f4d", accent="#8ea66b", dark="#5f4a33", light="#f0e7cc"),
+    "angling": dict(wall="#e2d9bd", roof="#c9b482", trim="#6f8079", accent="#7fa9ab", dark="#40564f", light="#efe7cd"),
     "cottage": dict(wall="#e5dcbe", roof="#bb8964", trim="#9e6b4e", accent="#d4a078", dark="#6b4230", light="#f2ecd2"),
 }
 
