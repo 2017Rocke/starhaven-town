@@ -34,6 +34,35 @@
     parent.append(node);
     return node;
   }
+  // Narrow a finished group horizontally around its centre. Every edge is placed
+  // once and snapped to the same 2px lattice, so two shapes that used to abut
+  // still abut: snapping x and x+width (not the width itself) is what keeps the
+  // courses, planks and window trim from drifting apart or overlapping.
+  // One-pixel hairlines (fish columns, seams) keep their width and only move.
+  function squeezeX(node, factor, center = 160) {
+    const place = value => center + (value - center) * factor;
+    const snap2 = value => Math.round(value / 2) * 2;
+    const walk = parent => {
+      for (const child of parent.children || []) {
+        if (!child || typeof child !== "object") continue;
+        if (child.name === "rect") {
+          const x = Number(child.attrs.x), width = Number(child.attrs.width);
+          if (!Number.isFinite(x) || !Number.isFinite(width)) continue;
+          if (width <= 2) {
+            child.attrs.x = String(Math.round(place(x)));
+          } else {
+            const left = snap2(place(x)), right = snap2(place(x + width));
+            child.attrs.x = String(left);
+            child.attrs.width = String(Math.max(2, right - left));
+          }
+        } else {
+          walk(child);
+        }
+      }
+    };
+    walk(node);
+    return node;
+  }
   function resolve(agent) {
     const style = Object.prototype.hasOwnProperty.call(STYLES, agent?.house?.style) ? agent.house.style : "cottage";
     const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden" };
@@ -59,6 +88,12 @@
       rect(g, x + w - 16, y + 4, 4, h - 4, p.wood[0]);
     }
     stoneBase(g, x, y + h - 4, w);
+    // Corner quoins and a plinth shadow lift the masonry without new shapes.
+    for (let quoin = y + 8; quoin < y + h - 12; quoin += 16) {
+      rect(g, x, quoin, 8, 4, base[1]);
+      rect(g, x + w - 8, quoin + 8, 8, 4, base[1]);
+    }
+    rect(g, x, y + h - 8, w, 4, base[2]);
   }
   function roof(g, p, x, y, width, rows) {
     // A roof is built one stair and one staggered tile at a time.
@@ -74,6 +109,14 @@
     rect(g, x - 4, y + rows * 4, width + 8, 4, p.roof[2]);
     rect(g, x, y + rows * 4 + 4, width, 4, p.wood[2]);
     rect(g, x + 4, y + rows * 4 + 8, width - 8, 4, p.wall[2]);
+    // Ridge cap and fascia nails: the two details every roof was missing.
+    const ridgeInset = (rows - 1) * 8;
+    if (width - ridgeInset * 2 > 24) {
+      rect(g, x + ridgeInset, y - 8, width - ridgeInset * 2, 4, p.roof[1]);
+      rect(g, x + ridgeInset - 4, y - 4, width - ridgeInset * 2 + 8, 4, p.roof[2]);
+      for (let cap = x + ridgeInset + 8; cap < x + width - ridgeInset - 8; cap += 24) rect(g, cap, y - 4, 4, 4, p.roof[1]);
+    }
+    for (let nail = x + 8; nail < x + width - 8; nail += 32) rect(g, nail, y + rows * 4 + 4, 4, 4, p.wood[0]);
   }
   function windowFrame(g, p, x, y, width = 32, height = 32, shutters = false) {
     rect(g, x, y, width, height, p.wood[2]);
@@ -84,6 +127,9 @@
     rect(g, x + 4, y + Math.floor(height / 8) * 4, width - 8, 4, p.wood[1]);
     rect(g, x - 4, y + height, width + 8, 4, p.wood[1]);
     rect(g, x, y + height + 4, width + 4, 4, p.wood[0]);
+    // Two glass reflections read as a window instead of a flat pane.
+    rect(g, x + 8, y + 8, 8, 4, C.glassLight);
+    rect(g, x + 4, y + height - 16, 4, 4, C.glassLight);
     if (shutters) {
       for (const sx of [x - 12, x + width + 4]) {
         rect(g, sx, y + 4, 8, height - 4, p.roof[2]);
@@ -100,6 +146,9 @@
     rect(g, x + 4, y + 8, 24, 12, C.glassShade);
     rect(g, x + 8, y + 8, 16, 8, C.glassLight);
     rect(g, x + 24, y + 28, 4, 4, C.gold);
+    // Iron hinges on the door leaf.
+    rect(g, x + 4, y + 12, 4, 4, C.glassShade);
+    rect(g, x + 4, y + 32, 4, 4, C.glassShade);
     rect(g, x - 4, 168, 40, 4, C.stoneLight);
     rect(g, x - 8, 172, 48, 4, C.stone);
     rect(g, x - 12, 176, 56, 4, C.stoneDark);
@@ -156,9 +205,9 @@
   }
   function blueprint(g, p, x, y, width = 56, height = 32) {
     rect(g, x, y, width, height, p.wood[2]); rect(g, x + 4, y + 4, width - 8, height - 8, "#86a5a0");
-    rect(g, x + 12, y + 8, 4, height - 16, "#d8dfc7"); rect(g, x + 12, y + 8, width - 28, 4, "#d8dfc7");
-    rect(g, x + width - 20, y + 8, 4, height - 16, "#d8dfc7"); rect(g, x + 12, y + height - 12, width - 28, 4, "#d8dfc7");
-    rect(g, x + 24, y + 16, 4, height - 24, "#b7cdba"); rect(g, x + 28, y + 16, width - 48, 4, "#b7cdba");
+    rect(g, x + 12, y + 8, 4, Math.max(4, height - 16), "#d8dfc7"); rect(g, x + 12, y + 8, width - 28, 4, "#d8dfc7");
+    rect(g, x + width - 20, y + 8, 4, Math.max(4, height - 16), "#d8dfc7"); rect(g, x + 12, y + height - 12, width - 28, 4, "#d8dfc7");
+    rect(g, x + 24, y + 16, 4, Math.max(4, height - 24), "#b7cdba"); rect(g, x + 28, y + 16, Math.max(4, width - 48), 4, "#b7cdba");
   }
   function guitar(g, p, x, y) {
     rect(g, x + 12, y, 8, 8, p.wood[2]); rect(g, x + 12, y + 8, 4, 24, p.wood[1]);
@@ -173,6 +222,45 @@
     rect(g, x + 8, y + 8, 12, 8, "#626f64"); rect(g, x + 12, y + 8, 4, 4, "#abb19b");
     if (!small) { rect(g, x + 8, y + 24, 12, 8, "#626f64"); rect(g, x + 12, y + 24, 4, 4, "#abb19b"); }
     rect(g, x + 4, y + height - 4, 20, 4, p.wood[0]);
+  }
+  // Clay shingles: a staggered tile per roof row, drawn in the roof's own
+  // palette so the slope reads as courses rather than one flat block.
+  function shingles(g, p, x, y, width, rows) {
+    for (let row = 0; row < rows; row++) {
+      const inset = (rows - row - 1) * 8;
+      const rx = x + inset, rw = width - inset * 2, ry = y + row * 4;
+      if (rw <= 16) continue;
+      const offset = row % 2 ? 8 : 0;
+      for (let tile = rx + 4 + offset; tile < rx + rw - 8; tile += 16) {
+        rect(g, tile, ry, 12, 2, p.roof[1]);
+        rect(g, tile + 12, ry, 4, 2, p.roof[2]);
+      }
+      rect(g, rx + 4, ry + 2, rw - 8, 2, row % 3 === 0 ? p.roof[0] : p.roof[2]);
+    }
+  }
+  // Brick courses for plastered walls, kept inside the wall rectangle.
+  function brickwork(g, p, x, y, width, height) {
+    for (let row = 0; row < height - 12; row += 8) {
+      const ry = y + 8 + row;
+      const offset = (row / 8) % 2 ? 8 : 0;
+      for (let bx = x + 8 + offset; bx < x + width - 12; bx += 16) {
+        rect(g, bx, ry, 12, 4, row % 16 === 0 ? p.wall[2] : p.wall[1]);
+        rect(g, bx, ry + 4, 12, 2, p.wall[2]);
+      }
+    }
+  }
+  // A raised timber stage for the beat workshop: deck, two step feet, valance.
+  function stage(g, p, x, y, width, dressed = false) {
+    rect(g, x, y + 26, width, 12, p.wood[0]);
+    rect(g, x, y + 26, width, 4, p.wood[1]);
+    for (let plank = x + 8; plank < x + width - 4; plank += 16) rect(g, plank, y + 30, 4, 8, p.wood[2]);
+    rect(g, x, y + 38, width, 4, p.wood[2]);
+    rect(g, x + 4, y + 38, 8, 8, p.wood[0]);
+    rect(g, x + width - 12, y + 38, 8, 8, p.wood[0]);
+    // Valance and its scalloped edge.
+    rect(g, x, y + 22, width, 6, dressed ? "#7c6f88" : p.roof[0]);
+    rect(g, x, y + 22, width, 2, dressed ? "#948aa0" : p.roof[1]);
+    for (let scallop = x + 4; scallop < x + width - 4; scallop += 12) rect(g, scallop, y + 28, 8, 4, dressed ? "#6b6076" : p.roof[2]);
   }
   function bird(g, x, y, adult = false, facingLeft = false) {
     // A readable silhouette: tail, broad body, separate head, beak and two feet.
@@ -207,8 +295,8 @@
       rect(g, rx + rw - 4, ry, 4, 4, p.roof[2]);
       if (row % 2) for (let tile = rx + 12; tile < rx + rw - 12; tile += 20) rect(g, tile, ry, 8, 2, p.roof[2]);
     }
-    for (let tooth = x - 4; tooth < x + width + 4; tooth += 12) rect(g, tooth, y + rows * 4, 8, 4, p.roof[1]);
-    for (let tooth = x + 2; tooth < x + width; tooth += 24) rect(g, tooth, y + rows * 4 + 4, 8, 4, p.roof[2]);
+    for (let tooth = x - 4; tooth <= x + width - 8; tooth += 12) rect(g, tooth, y + rows * 4, 8, 4, p.roof[1]);
+    for (let tooth = x + 2; tooth <= x + width - 8; tooth += 24) rect(g, tooth, y + rows * 4 + 4, 8, 4, p.roof[2]);
     rect(g, x + width / 2 - 40, y - 8, 80, 8, p.roof[2]);
     rect(g, x + width / 2 - 32, y - 4, 64, 4, p.roof[1]);
   }
@@ -388,15 +476,90 @@
       rect(g, 204, 72, 8, 52, p.wood[0]); rect(g, 204, 76, 4, 40, p.wood[1]);
       for (let yy = 80; yy < 120; yy += 12) rect(g, 196, yy, 16, 4, p.wood[2]);
     } else if (style === "workshop") {
-      chimney(g, p, 180, 36, 44);
-      wall(g, p, 28, 104, 184, 64); roof(g, p, 16, 48, 208, 13);
-      // Ordered tools and a real code display are built into the facade.
-      screen(g, p, 40, 116, 48, "code"); toolRack(g, p, 156, 116, 44); door(g, p);
-      rect(g, 76, 92, 88, 8, p.wood[2]); rect(g, 80, 92, 80, 4, p.wood[1]);
-      for (let xx = 88; xx <= 148; xx += 20) { rect(g, xx, 76, 8, 12, C.glassShade); rect(g, xx, 76, 8, 4, C.glassLight); }
+      // 280-wide footprint matching the angling hut: x 20..300 on the 4px grid.
+      // Roof y16..80, wall y80..176, yard y180..236. The shared plot transform
+      // offsets houses by (40,18), so this branch cancels it.
+      const local = group("workshop-house");
+      local.setAttribute("transform", "translate(-40 -18)");
+      g.append(local);
+
+      chimney(local, p, 236, 40, 52);
+      for (let joint = 48; joint < 84; joint += 8) rect(local, 240, joint, 12, 2, p.wood[1]);
+      wall(local, p, 36, 80, 248, 96);
+      footings(local, 36, 176, 248);
+      roof(local, p, 24, 16, 272, 16);
+      shingles(local, p, 24, 16, 272, 16);
+      brickwork(local, p, 36, 80, 248, 80);
+
+      // Ridge cap: sits on the narrow top course, never wider than that course
+      // plus a small overhang, so nothing floats above the peak.
+      // roof(local,p,24,16,272,16): top course is x144..176 (32 wide).
+      rect(local, 140, 8, 40, 4, p.roof[2]);
+      rect(local, 144, 4, 32, 4, p.roof[1]);
+      for (let cap = 148; cap < 172; cap += 8) rect(local, cap, 4, 4, 4, p.roof[2]);
+      for (let tile = 48; tile < 272; tile += 24) rect(local, tile, 72, 8, 4, p.roof[2]);
+      for (let nail = 40; nail < 280; nail += 32) rect(local, nail, 80, 4, 4, p.wood[0]);
+      // Gable vent centred on the wall, below the roof's top course.
+      rect(local, 140, 56, 32, 20, p.wood[2]);
+      rect(local, 144, 60, 24, 12, p.wall[2]);
+      for (let slat = 64; slat < 72; slat += 4) rect(local, 148, slat, 16, 2, p.wood[1]);
+
+      // Corner boards and a plank wainscot, same construction as the hut.
+      rect(local, 36, 80, 4, 96, p.wood[1]);
+      rect(local, 40, 80, 4, 96, p.wood[0]);
+      rect(local, 280, 80, 4, 96, p.wood[1]);
+      rect(local, 276, 80, 4, 96, p.wood[0]);
+      rect(local, 36, 160, 248, 16, p.wood[0]);
+      rect(local, 36, 160, 248, 4, p.wood[1]);
+      for (let plank = 44; plank < 284; plank += 24) rect(local, plank, 160, 4, 16, p.wood[2]);
+      for (let bolt = 52; bolt < 284; bolt += 24) rect(local, bolt, 164, 4, 4, p.wood[1]);
+
+      // Four windows with shutters, plus glass highlights.
+      windowFrame(local, p, 52, 88, 32, 28, true);
+      windowFrame(local, p, 236, 88, 32, 28, true);
+      windowFrame(local, p, 52, 124, 32, 32);
+      windowFrame(local, p, 236, 124, 32, 32);
+      for (const [wx, wy] of [[52, 88], [236, 88], [52, 124], [236, 124]]) {
+        rect(local, wx + 8, wy + 8, 8, 4, C.glassLight);
+        rect(local, wx + 8, wy + 16, 4, 4, C.glassLight);
+      }
+      for (const sx of [40, 88, 228, 272]) {
+        for (let slat = 92; slat < 112; slat += 8) rect(local, sx, slat, 8, 4, p.roof[2]);
+      }
+
+      // Porch with a timber awning; the code display hangs beside the door.
+      rect(local, 120, 108, 80, 8, p.wood[2]);
+      rect(local, 120, 108, 80, 4, p.wood[1]);
+      for (let rafter = 124; rafter < 196; rafter += 12) rect(local, rafter, 112, 4, 4, p.wood[2]);
+      rect(local, 116, 112, 88, 4, p.wood[1]);
+      rect(local, 120, 116, 8, 60, p.wood[0]);
+      rect(local, 192, 116, 8, 60, p.wood[0]);
+      rect(local, 120, 116, 4, 60, p.wood[1]);
+      rect(local, 192, 116, 4, 60, p.wood[1]);
+      rect(local, 120, 172, 16, 4, C.stone);
+      rect(local, 188, 172, 16, 4, C.stone);
+      door(local, p, 144, 124);
+
+      // The workshop facade keeps its real code screen and tool rack.
+      screen(local, p, 60, 108, 48, "code");
+      toolRack(local, p, 208, 108, 44);
+
+      // A signboard above the porch reads as the shop name.
+      rect(local, 128, 96, 64, 12, p.wood[2]);
+      rect(local, 132, 100, 56, 4, p.wall[1]);
+      rect(local, 136, 100, 16, 4, p.roof[0]);
+      rect(local, 156, 100, 24, 4, p.wall[2]);
+
+      // Hanging lamp and a coiled cable by the door.
+      lantern(local, p, 204, 116);
+      rect(local, 208, 148, 16, 4, "#5c6b63");
+      rect(local, 212, 152, 8, 8, "#5c6b63");
+      rect(local, 214, 156, 4, 4, "#8a9a74");
       if (motif === "music") {
-        rect(g, 212, 116, 12, 4, p.wood[2]); rect(g, 220, 116, 4, 24, p.wood[2]);
-        rect(g, 216, 136, 12, 8, p.roof[2]); rect(g, 216, 136, 4, 4, p.roof[1]);
+        // A small wall-mounted speaker grille for the beat workshop.
+        rect(local, 244, 148, 20, 20, p.wood[2]);
+        rect(local, 248, 152, 12, 12, "#626f64");
+        rect(local, 250, 154, 8, 4, "#abb19b");
       }
     } else if (style === "farm") {
       wall(g, p, 28, 96, 140, 72); roof(g, p, 16, 48, 164, 11);
@@ -448,88 +611,87 @@
       rect(g, 88, 100, 64, 12, p.wood[2]); rect(g, 92, 100, 56, 8, C.cream);
       rect(g, 112, 100, 4, 8, p.roof[0]); rect(g, 124, 100, 4, 8, C.green);
     } else if (style === "angling") {
-      // Plot coordinates: the shared plot transform offsets every house by
-      // (40,18); this branch cancels it so the hut lines up with its yard.
+      // 280-wide footprint on the shared 4px grid: x 20..300, so every
+      // neighbour keeps at least 20px of grass. The plot transform offsets
+      // each house by (40,18); this branch cancels it and draws in absolute
+      // plot coordinates. Roof y16..80, wall y80..176, yard y180..236.
       const local = group("angling-house");
       local.setAttribute("transform", "translate(-40 -18)");
       g.append(local);
 
-      wall(local, p, 28, 80, 264, 96);
-      footings(local, 28, 176, 264);
-      reedRoof(local, p, 4, 8, 312, 16);
-      thatchStreaks(local, p, 4, 8, 312, 16);
+      wall(local, p, 36, 80, 248, 96);
+      footings(local, 36, 176, 248);
+      // reedRoof paints 4px past each flank for its ragged eaves, so the roof
+      // body starts at 24 to keep the whole silhouette inside x 20..300.
+      reedRoof(local, p, 24, 16, 272, 16);
+      thatchStreaks(local, p, 24, 16, 272, 16);
       // The stack is drawn over the thatch so it reads as a chimney on the roof.
-      chimney(local, p, 236, 28, 56);
-      for (let joint = 40; joint < 84; joint += 8) rect(local, 240, joint, 12, 2, p.wood[1]);
+      chimney(local, p, 228, 44, 48);
+      for (let joint = 52; joint < 88; joint += 8) rect(local, 232, joint, 12, 2, p.wood[1]);
 
-      // Roof furniture: a slim ridge cap and stitching along the ridge.
-      for (let ridge = 88; ridge < 232; ridge += 16) rect(local, ridge, 4, 8, 4, p.roof[1]);
-      rect(local, 84, 8, 152, 4, p.roof[2]);
-      for (let stitch = 92; stitch < 228; stitch += 8) rect(local, stitch, 8, 4, 4, p.roof[2]);
-      for (let tooth = 16; tooth < 300; tooth += 28) rect(local, tooth, 76, 8, 4, p.roof[1]);
-      // Loose straw catches the light along the eave.
-      for (let tuft = 24; tuft < 296; tuft += 20) rect(local, tuft, 80, 8, 4, p.roof[1]);
-      // Mortar highlights where the plaster meets the eave.
-      for (let dash = 40; dash < 284; dash += 32) rect(local, dash, 84, 12, 4, p.wall[1]);
+      // Ridge stitching sits on the narrow top course. reedRoof here has its
+      // top row at x84..236 (152 wide), so the cap and the stitches stay inside.
+      rect(local, 80, 8, 160, 4, p.roof[2]);
+      rect(local, 84, 4, 152, 4, p.roof[1]);
+      for (let stitch = 92; stitch < 228; stitch += 8) rect(local, stitch, 12, 4, 4, p.roof[2]);
+      for (let tooth = 28; tooth < 280; tooth += 28) rect(local, tooth, 76, 8, 4, p.roof[1]);
+      for (let tuft = 36; tuft < 280; tuft += 20) rect(local, tuft, 80, 8, 4, p.roof[1]);
+      for (let dash = 48; dash < 276; dash += 32) rect(local, dash, 84, 12, 4, p.wall[1]);
 
       // Corner boards frame the plaster between the roof and the wainscot.
-      rect(local, 28, 80, 4, 96, p.wood[1]);
-      rect(local, 32, 80, 4, 96, p.wood[0]);
-      rect(local, 288, 80, 4, 96, p.wood[1]);
-      rect(local, 284, 80, 4, 96, p.wood[0]);
+      rect(local, 36, 80, 4, 96, p.wood[1]);
+      rect(local, 40, 80, 4, 96, p.wood[0]);
+      rect(local, 280, 80, 4, 96, p.wood[1]);
+      rect(local, 276, 80, 4, 96, p.wood[0]);
 
       // Plank wainscot along the base keeps the plaster from reading generic.
-      rect(local, 28, 160, 264, 16, p.wood[0]);
-      rect(local, 28, 160, 264, 4, p.wood[1]);
-      for (let plank = 36; plank < 292; plank += 24) rect(local, plank, 160, 4, 16, p.wood[2]);
-      for (let bolt = 44; bolt < 292; bolt += 24) rect(local, bolt, 164, 4, 4, p.wood[1]);
+      rect(local, 36, 160, 248, 16, p.wood[0]);
+      rect(local, 36, 160, 248, 4, p.wood[1]);
+      for (let plank = 44; plank < 284; plank += 24) rect(local, plank, 160, 4, 16, p.wood[2]);
+      for (let bolt = 52; bolt < 284; bolt += 24) rect(local, bolt, 164, 4, 4, p.wood[1]);
 
-      windowFrame(local, p, 48, 88, 32, 28, true);
-      windowFrame(local, p, 240, 88, 32, 28, true);
-      windowFrame(local, p, 48, 124, 32, 32);
-      windowFrame(local, p, 240, 124, 32, 32);
-      for (const [wx, wy] of [[48, 88], [240, 88], [48, 124], [240, 124]]) {
+      windowFrame(local, p, 52, 88, 32, 28, true);
+      windowFrame(local, p, 236, 88, 32, 28, true);
+      windowFrame(local, p, 52, 124, 32, 32);
+      windowFrame(local, p, 236, 124, 32, 32);
+      for (const [wx, wy] of [[52, 88], [236, 88], [52, 124], [236, 124]]) {
         rect(local, wx + 8, wy + 8, 8, 4, C.glassLight);
         rect(local, wx + 8, wy + 16, 4, 4, C.glassLight);
       }
       // Shutter slats on the two upper windows.
-      for (const sx of [36, 84, 228, 276]) {
+      for (const sx of [40, 88, 228, 272]) {
         for (let slat = 92; slat < 112; slat += 8) rect(local, sx, slat, 8, 4, p.roof[2]);
       }
 
       // Porch: a thatch awning on two posts, with the sign on its gable.
-      rect(local, 124, 108, 72, 8, p.roof[1]);
-      rect(local, 124, 108, 72, 4, p.roof[2]);
-      for (let tile = 128; tile < 192; tile += 16) rect(local, tile, 112, 8, 2, p.roof[2]);
-      rect(local, 120, 112, 80, 4, p.wood[1]);
-      rect(local, 124, 116, 8, 60, p.wood[0]);
-      rect(local, 188, 116, 8, 60, p.wood[0]);
-      rect(local, 124, 116, 4, 60, p.wood[1]);
-      rect(local, 188, 116, 4, 60, p.wood[1]);
-      rect(local, 124, 124, 4, 4, p.wood[2]);
-      rect(local, 188, 124, 4, 4, p.wood[2]);
-      rect(local, 120, 172, 16, 4, C.stone);
-      rect(local, 180, 172, 16, 4, C.stone);
+      rect(local, 120, 108, 80, 8, p.roof[1]);
+      rect(local, 120, 108, 80, 4, p.roof[2]);
+      for (let tile = 124; tile < 200; tile += 16) rect(local, tile, 112, 8, 2, p.roof[2]);
+      rect(local, 116, 112, 88, 4, p.wood[1]);
+      rect(local, 120, 116, 8, 60, p.wood[0]);
+      rect(local, 192, 116, 8, 60, p.wood[0]);
+      rect(local, 120, 116, 4, 60, p.wood[1]);
+      rect(local, 192, 116, 4, 60, p.wood[1]);
+      rect(local, 120, 124, 4, 4, p.wood[2]);
+      rect(local, 192, 124, 4, 4, p.wood[2]);
+      rect(local, 116, 172, 16, 4, C.stone);
+      rect(local, 188, 172, 16, 4, C.stone);
 
-      door(local, p, 140, 124);
-      fishSign(local, p, 128, 88, 64);
-      lantern(local, p, 196, 120);
+      door(local, p, 144, 124);
+      fishSign(local, p, 128, 84, 64);
+      lantern(local, p, 204, 116);
       // A bait barrel and a tackle crate flank the door in warm timber tones.
-      rect(local, 96, 150, 24, 24, "#b99d6f");
-      rect(local, 96, 150, 24, 4, "#cfb587");
-      rect(local, 96, 158, 24, 4, "#8f7a55");
-      rect(local, 96, 166, 24, 4, "#8f7a55");
-      rect(local, 100, 154, 16, 4, "#a98f63");
-      rect(local, 100, 170, 16, 4, "#a98f63");
-      rect(local, 204, 152, 24, 20, "#b99d6f");
-      rect(local, 204, 152, 24, 4, "#cfb587");
-      rect(local, 204, 164, 24, 4, "#8f7a55");
-      rect(local, 208, 152, 4, 20, "#8f7a55");
-      rect(local, 220, 152, 4, 20, "#8f7a55");
-      // Hinges and a knob finish the door.
-      rect(local, 136, 132, 4, 4, "#5c6b63");
-      rect(local, 136, 156, 4, 4, "#5c6b63");
-      rect(local, 172, 146, 4, 4, "#d3b579");
+      rect(local, 88, 148, 24, 24, "#b99d6f");
+      rect(local, 88, 148, 24, 4, "#cfb587");
+      rect(local, 88, 156, 24, 4, "#8f7a55");
+      rect(local, 88, 164, 24, 4, "#8f7a55");
+      rect(local, 92, 152, 16, 4, "#a98f63");
+      rect(local, 92, 168, 16, 4, "#a98f63");
+      rect(local, 208, 152, 24, 20, "#b99d6f");
+      rect(local, 208, 152, 24, 4, "#cfb587");
+      rect(local, 208, 164, 24, 4, "#8f7a55");
+      rect(local, 212, 152, 4, 20, "#8f7a55");
+      rect(local, 224, 152, 4, 20, "#8f7a55");
     } else {
       chimney(g, p, 180, 40, 44);
       wall(g, p, 28, 104, 184, 64); roof(g, p, 16, 48, 208, 13);
@@ -538,7 +700,11 @@
       flowerBox(g, p, 44, 156); flowerBox(g, p, 168, 156, 28);
     }
     // Small structural variations keep neighbors distinct without changing style.
-    if (variant % 2 === 1 && !["farm", "command"].includes(style)) lantern(g, p, 140, 124);
+    if (variant % 2 === 1 && !["farm", "command", "workshop", "angling"].includes(style)) lantern(g, p, 140, 124);
+    // The two rebuilt houses are drawn at 280 then trimmed to 0.81, so they read
+    // slightly narrower than the original 208-wide homes instead of towering
+    // over them. Keep this in sync with squeezeX's snap grid below.
+    if (style === "angling" || style === "workshop") squeezeX(g, 0.81);
     return g;
   }
 
@@ -546,11 +712,46 @@
     const { style, p, motif } = resolve(agent), g = group(`yard-${style}-${motif}`);
     // Keep x128..196 clear in front of the central doorstep and resident sprite.
     if (style === "workshop") {
-      toolRack(g, p, 24, 168, 84);
-      rect(g, 24, 208, 88, 8, p.wood[0]); rect(g, 28, 216, 4, 16, p.wood[2]); rect(g, 100, 216, 4, 16, p.wood[2]);
-      crate(g, p, 40, 212, 32); crate(g, p, 80, 212, 24);
-      if (motif === "music") { speaker(g, p, 212, 192); guitar(g, p, 256, 172); }
-      else { crate(g, p, 216, 204, 32); crate(g, p, 260, 196, 28); rect(g, 268, 188, 8, 8, C.stoneLight); }
+      // 280-wide yard. The stage fills x 20..120, the gear wall x 200..300, and
+      // x 124..196 stays clear for the resident sprite (56x70, centred at 160).
+      stage(g, p, 20, 182, 100, motif === "music");
+      if (motif === "music") {
+        // Backdrop cloth with folds, then the act on the deck.
+        rect(g, 20, 182, 100, 24, "#7c6f88");
+        rect(g, 20, 182, 100, 4, "#948aa0");
+        for (let fold = 24; fold < 116; fold += 8) rect(g, fold, 186, 4, 16, "#6b6076");
+        for (let tie = 28; tie < 116; tie += 16) rect(g, tie, 200, 4, 4, "#5a5164");
+        speaker(g, p, 24, 196);
+        speaker(g, p, 56, 196, true);
+        guitar(g, p, 84, 164);
+        rect(g, 48, 182, 4, 14, "#5c6b63"); rect(g, 44, 178, 12, 4, "#8a9a74");
+        // Cable coil and a spare amp head beside the stage.
+        rect(g, 20, 214, 12, 12, "#5c6b63");
+        rect(g, 24, 218, 4, 4, "#8a9a74");
+        rect(g, 36, 214, 20, 12, "#898b7b");
+        rect(g, 36, 214, 20, 4, "#a3a596");
+        for (let knob = 40; knob < 54; knob += 4) rect(g, knob, 220, 2, 2, "#626f64");
+        // Poster board on the right: three pinned flyers.
+        rect(g, 200, 184, 60, 44, p.wood[0]);
+        rect(g, 204, 188, 52, 36, p.wall[1]);
+        for (const [px, py, pw, ph] of [[208, 192, 20, 12], [232, 192, 20, 12], [208, 208, 44, 12]]) {
+          rect(g, px, py, pw, ph, "#f2ecd6");
+          rect(g, px, py, pw, 2, "#d9d2b4");
+          rect(g, px + 2, py + 4, pw - 4, 2, "#8a9a74");
+          rect(g, px + 2, py + 8, pw - 8, 2, "#b7bdd0");
+          rect(g, px + pw / 2 - 1, py - 2, 2, 2, "#c96b5a");
+        }
+        // Record crate and a stacked pair of speakers under the board.
+        crate(g, p, 204, 210, 32);
+        for (let sleeve = 208; sleeve < 232; sleeve += 4) rect(g, sleeve, 206, 2, 4, sleeve % 8 ? "#c2a97a" : "#b0a0c0");
+        crate(g, p, 244, 210, 28);
+        crate(g, p, 278, 214, 20);
+      } else {
+        toolRack(g, p, 24, 196, 84);
+        crate(g, p, 28, 210, 32); crate(g, p, 72, 214, 24);
+        crate(g, p, 216, 210, 32); crate(g, p, 260, 214, 24);
+        rect(g, 268, 202, 8, 8, C.stoneLight);
+      }
     } else if (style === "architecture") {
       rect(g, 28, 196, 92, 8, p.wood[0]); rect(g, 32, 204, 4, 28, p.wood[2]); rect(g, 108, 204, 4, 28, p.wood[2]);
       blueprint(g, p, 32, 176, 56, 24);
@@ -597,59 +798,91 @@
       rect(g, 32, 216, 4, 16, p.wood[2]); rect(g, 100, 216, 4, 16, p.wood[2]);
       crate(g, p, 212, 208, 32); flowerBox(g, p, 260, 208, 40); fence(g, p, 208, 212, 96);
     } else if (style === "angling") {
-      // A drying rack of big silver fish on the left, the pond and its jetty on
-      // the right, and stepping stones from the doorstep down to the water.
-      // Three fish on a narrower rack; the doorway in front stays open grass.
-      rect(g, 12, 186, 8, 50, p.wood[0]);
-      rect(g, 112, 186, 8, 50, p.wood[0]);
-      rect(g, 12, 186, 108, 8, p.wood[1]);
-      rect(g, 12, 190, 108, 4, p.wood[2]);
-      for (const [fx, species] of [[24, "carp"], [54, "crucian"], [84, "trout"]]) driedFish(g, fx, 198, species);
+      // Yard spans x 20..300. The drying rack fills the left third, the pond
+      // and jetty the right, and x 124..196 stays open grass so the resident
+      // sprite (56x70, bottom-centred at x160) always walks out onto nothing.
+      rect(g, 20, 184, 8, 52, p.wood[0]);
+      rect(g, 112, 184, 8, 52, p.wood[0]);
+      rect(g, 20, 184, 100, 8, p.wood[1]);
+      rect(g, 20, 188, 100, 4, p.wood[2]);
+      for (const [fx, species] of [[26, "carp"], [52, "crucian"], [78, "trout"]]) driedFish(g, fx, 198, species);
       // Cleats and a rope coil make the rack read as built, not drawn.
-      for (const [cx, cy] of [[12, 210], [112, 210], [12, 226], [112, 226]]) rect(g, cx, cy, 8, 4, p.wood[2]);
-      rect(g, 56, 188, 12, 4, "#d8bf80");
-      rect(g, 56, 192, 4, 4, "#b9a06d");
+      for (const [cx, cy] of [[20, 208], [112, 208], [20, 226], [112, 226]]) rect(g, cx, cy, 8, 4, p.wood[2]);
+      rect(g, 56, 186, 12, 4, "#d8bf80");
+      rect(g, 56, 190, 4, 4, "#b9a06d");
       // A wooden pail waits under the rack, warm-toned so it reads as gear.
-      rect(g, 92, 222, 12, 12, "#b99d6f");
-      rect(g, 92, 222, 12, 4, "#cfb587");
-      rect(g, 92, 230, 12, 4, "#8f7a55");
-      rect(g, 92, 226, 12, 2, "#a98f63");
-      rect(g, 94, 218, 8, 4, "#8f7a55");
-      // Pond and jetty sit clear of the x125..195 doorway the resident walks in.
-      pond(g, 220, 196, 88, 36);
-      // Shore stones and lily pads sit on the water without hiding the jetty.
-      for (const [sx, sy] of [[244, 188], [268, 188], [292, 188]]) {
+      rect(g, 86, 220, 12, 12, "#b99d6f");
+      rect(g, 86, 220, 12, 4, "#cfb587");
+      rect(g, 86, 228, 12, 4, "#8f7a55");
+      rect(g, 86, 224, 12, 2, "#a98f63");
+      rect(g, 88, 216, 8, 4, "#8f7a55");
+      // Pond and jetty sit right of the doorway lane. The lane is x132..188 before
+      // the squeeze; after 0.81 trimming it ends near x183, so the bank starts at
+      // 208 to stay clear while keeping the water inside the plot.
+      pond(g, 208, 196, 72, 36);
+      for (const [sx, sy] of [[220, 188], [244, 188], [264, 188]]) {
         rect(g, sx, sy, 16, 4, "#c8cfa6");
         rect(g, sx, sy + 4, 16, 4, "#b3c397");
       }
-      for (const [sx, sy] of [[216, 232], [280, 232]]) {
+      for (const [sx, sy] of [[212, 232], [256, 232]]) {
         rect(g, sx, sy, 16, 4, "#b3c397");
         rect(g, sx, sy - 4, 16, 4, "#c8cfa6");
       }
-      for (const [px, py] of [[226, 212], [252, 228], [288, 204]]) {
+      for (const [px, py] of [[218, 212], [238, 228], [264, 204]]) {
         rect(g, px, py, 8, 4, "#8fb06a");
         rect(g, px, py, 4, 4, "#a6c47e");
       }
-      jetty(g, p, 196, 204, 56);
-      boat(g, p, 240, 216);
-      rect(g, 256, 208, 12, 4, p.wood[0]);
-      rect(g, 256, 212, 4, 4, p.wood[2]);
-      // Reeds mark the bank without covering open water.
-      for (const [rx, ry] of [[212, 192], [300, 192], [300, 216]]) {
+      jetty(g, p, 200, 204, 48);
+      boat(g, p, 214, 216);
+      rect(g, 244, 208, 12, 4, p.wood[0]);
+      rect(g, 244, 212, 4, 4, p.wood[2]);
+      // Reeds mark the bank, kept out of the lane the resident walks through.
+      for (const [rx, ry] of [[204, 192], [278, 192], [278, 216]]) {
         rect(g, rx, ry, 4, 20, "#849d70"); rect(g, rx + 8, ry + 4, 4, 16, "#a1b480");
         rect(g, rx + 6, ry - 4, 8, 8, "#a58f64");
       }
+    } else if (motif === "hiking") {
+      // A trailhead below the windows: pack and boots on the left, signpost
+      // and cairn on the right, keeping the front door path clear.
+      rect(g, 32, 190, 20, 8, p.roof[1]);
+      rect(g, 28, 198, 40, 32, p.roof[0]);
+      rect(g, 28, 198, 40, 4, p.roof[1]);
+      rect(g, 32, 206, 32, 14, p.wall[0]);
+      rect(g, 32, 198, 4, 32, p.wood[1]);
+      rect(g, 60, 198, 4, 32, p.wood[1]);
+      rect(g, 34, 222, 8, 4, p.wood[2]);
+      rect(g, 72, 210, 12, 20, p.wood[2]);
+      rect(g, 72, 210, 12, 4, p.wood[1]);
+      rect(g, 68, 226, 16, 6, C.stoneDark);
+      rect(g, 88, 210, 12, 20, p.wood[2]);
+      rect(g, 88, 210, 12, 4, p.wood[1]);
+      rect(g, 84, 226, 16, 6, C.stoneDark);
+      flowerBox(g, p, 104, 204, 28);
+      rect(g, 244, 188, 8, 48, p.wood[0]);
+      rect(g, 244, 188, 4, 48, p.wood[1]);
+      rect(g, 212, 196, 32, 12, p.wood[0]);
+      rect(g, 212, 196, 32, 4, p.wood[1]);
+      rect(g, 216, 200, 24, 4, C.cream);
+      rect(g, 208, 200, 4, 4, p.wood[0]);
+      rect(g, 252, 212, 32, 12, p.wood[0]);
+      rect(g, 252, 212, 32, 4, p.wood[1]);
+      rect(g, 256, 216, 24, 4, C.cream);
+      rect(g, 284, 216, 4, 4, p.wood[0]);
+      rect(g, 292, 220, 20, 8, C.stone);
+      rect(g, 296, 212, 16, 8, C.stoneLight);
+      rect(g, 300, 204, 8, 8, C.stoneDark);
     } else {
-      flowerBox(g, p, 28, 204, 80); flowerBox(g, p, 216, 204, 76);
       rect(g, 44, 220, 52, 4, p.wood[1]); rect(g, 48, 224, 4, 12, p.wood[2]); rect(g, 88, 224, 4, 12, p.wood[2]);
       fence(g, p, 208, 212, 96);
     }
+    // Match the house trim so the yard lines up with its narrowed owner.
+    if (style === "angling" || style === "workshop") squeezeX(g, 0.81);
     return g;
   }
 
   function labelY(agent) {
     // Four units above the main roof; detached smoke, flags and telescopes are ignored.
-    const roofAnchors = { command: 20, observatory: 16, architecture: 16, workshop: 44, farm: 44, music: 40, finance: 56, school: 8, angling: 4, cottage: 44 };
+    const roofAnchors = { command: 20, observatory: 16, architecture: 16, workshop: 4, farm: 44, music: 40, finance: 56, school: 8, angling: 4, cottage: 44 };
     return roofAnchors[resolve(agent).style];
   }
 
