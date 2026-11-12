@@ -95,17 +95,23 @@ class PublicGitHubClient:
     Proxy environment variables are deliberately ignored. No Git credential,
     browser session, authorization header or local file is sent to GitHub.
     """
-    def __init__(self, *, opener=None, socket_timeout=8, request_deadline=18, archive_deadline=60):
+    def __init__(self, *, opener=None, socket_timeout=8, request_deadline=18, archive_deadline=60, security=None):
         self.opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         self.socket_timeout = socket_timeout
         self.request_deadline = request_deadline
         self.archive_deadline = archive_deadline
+        self.security = security
 
     def deadline_for(self, url):
         return self.archive_deadline if urllib.parse.urlsplit(url).hostname == "codeload.github.com" else self.request_deadline
 
     def fetch(self, url, *, max_bytes=MAX_API_BYTES, cancel_event=None):
         if not _allowed_url(url):
+            if self.security is not None:
+                try:
+                    self.security.network_check(url=url, purpose="github", agent_id="scout")
+                except Exception:
+                    raise ScoutError("audit_unavailable", "稽查署暂时无法记录请求，已暂停采集。") from None
             raise ScoutError("invalid_source", "只允许从 GitHub 官方公开接口与源码下载域名读取资料。")
         _check_cancel(cancel_event)
         if not _NETWORK_SLOTS.acquire(blocking=False):
@@ -120,13 +126,29 @@ class PublicGitHubClient:
                 pass
 
         def transfer():
+            audit, status_code = None, None
+            ok, value = False, ScoutCancelled()
             try:
                 request = urllib.request.Request(url, headers={
                     "User-Agent": "StarhavenTown-PublicScout/1.0",
                     "Accept": "application/vnd.github+json",
                     "Accept-Encoding": "identity",
                 }, method="GET")
+                if self.security is not None:
+                    try:
+                        audit = self.security.network_check(url=url, purpose="github", agent_id="scout")
+                    except Exception:
+                        raise ScoutError("audit_unavailable", "稽查署暂时无法记录请求，已暂停采集。") from None
+                    if not isinstance(audit, dict) or type(audit.get("allowed")) is not bool:
+                        audit = None
+                        raise ScoutError("audit_unavailable", "稽查署返回了无效的检查结果，已暂停采集。")
+                    if audit["allowed"] is not True:
+                        raise ScoutError("security_blocked", "稽查署已暂停采集：" + audit.get("reason", "请求未通过规则检查。"))
+                _check_cancel(cancel_event)
+                if abandoned.is_set():
+                    raise ScoutCancelled()
                 with self.opener.open(request, timeout=self.socket_timeout) as response:
+                    status_code = getattr(response, "status", None)
                     if response.geturl() != url:
                         raise ScoutError("redirect_blocked", "来源发生重定向，未继续下载。")
                     length = response.headers.get("Content-Length", "")
@@ -146,8 +168,9 @@ class PublicGitHubClient:
                     if abandoned.is_set():
                         return
                     data = b"".join(chunks)
-                publish(True, data)
+                ok, value = True, data
             except urllib.error.HTTPError as exc:
+                status_code = exc.code
                 if exc.code in (403, 429):
                     error = ScoutError("rate_limited", "GitHub 暂时限制匿名请求，请稍后重试。", retryable=True)
                 elif exc.code == 404:
@@ -156,14 +179,23 @@ class PublicGitHubClient:
                     error = ScoutError("redirect_blocked", "来源发生重定向，未继续下载。")
                 else:
                     error = ScoutError("source_unavailable", "GitHub 暂时无法提供这份公开资料。", retryable=True)
-                publish(False, error)
+                value = error
+                exc.close()
             except ScoutError as exc:
-                publish(False, exc)
+                value = exc
             except Exception:
                 # Never reflect URLs, headers, remote error bodies or proxy secrets.
-                publish(False, ScoutError("network_error", "读取 GitHub 公开资料失败，请检查网络后重试。", retryable=True))
+                value = ScoutError("network_error", "读取 GitHub 公开资料失败，请检查网络后重试。", retryable=True)
             finally:
+                if audit is not None and audit.get("allowed") and self.security is not None:
+                    try:
+                        self.security.network_result(audit, ok=ok, status_code=status_code,
+                                                     error=None if ok else "公开资料请求未完成")
+                    except Exception:
+                        ok, value = False, ScoutError("audit_unavailable", "请求结果未能写入稽查档案，请检查治安系统。")
                 _NETWORK_SLOTS.release()
+            if not abandoned.is_set():
+                publish(ok, value)
 
         threading.Thread(target=transfer, name="starhaven-public-fetch", daemon=True).start()
         deadline = time.monotonic() + self.deadline_for(url)

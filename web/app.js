@@ -41,6 +41,8 @@
     { id: "scholar", name: "书卷学者", color: "#a297b5" },
     { id: "artist", name: "田园画家", color: "#bc947d" },
     { id: "angler", name: "钓鱼佬", color: "#5f8f96" },
+    { id: "officer", name: "巡街警官", color: "#627e92" },
+    { id: "inspector", name: "网络稽查员", color: "#7d8b79" },
   ];
   const avatarFiles = new Set(avatarChoices.map(choice => choice.id));
   const chosenAvatar = agent => avatarFiles.has(agent?.avatar) ? agent.avatar : agent?.id === "scout" ? "scout" : "captain";
@@ -327,7 +329,7 @@
   }
 
   function showView(name) {
-    if (!["town", "scout", "tasks", "growth"].includes(name)) return;
+    if (!["town", "scout", "police", "inspection", "tasks", "growth"].includes(name)) return;
     ui.view = name;
     $$("[data-view]").forEach(button => {
       const selected = button.dataset.view === name;
@@ -344,6 +346,11 @@
     if (name === "scout") {
       window.StarhavenScoutWorkspace?.refresh();
       if (ui.state && ui.selected !== "scout" && ui.state.agents.some(agent => agent.id === "scout")) selectAgent("scout");
+    }
+    const securityAgent = window.StarhavenSecurityWorkspace?.agentForOffice(name);
+    if (securityAgent) {
+      window.StarhavenSecurityWorkspace.open(name);
+      if (ui.state?.agents.some(agent => agent.id === securityAgent) && ui.selected !== securityAgent) selectAgent(securityAgent);
     }
     if (window.innerWidth <= 800) $(".main-content").scrollIntoView({ behavior: reducedMotion() ? "instant" : "smooth" });
   }
@@ -370,6 +377,8 @@
       restoreSavedSkin();
       const previous = ui.selected;
       if (initial && ui.view === "scout" && data.agents.some(agent => agent.id === "scout")) ui.selected = "scout";
+      const securityAgent = window.StarhavenSecurityWorkspace?.agentForOffice(ui.view);
+      if (initial && securityAgent && data.agents.some(agent => agent.id === securityAgent)) ui.selected = securityAgent;
       if (!data.agents.some(agent => agent.id === ui.selected)) {
         ui.selected = data.agents.some(agent => agent.id === data.selected_agent_id) ? data.selected_agent_id : data.agents[0]?.id || null;
       }
@@ -458,7 +467,12 @@
     homeCopy.append(el("strong", "", agent.house?.name || agent.home || "伙伴的家"));
     if (agent.house?.feature) homeCopy.append(el("small", "", agent.house.feature));
     home.append(homeCopy, icon("arrow"));
-    home.addEventListener("click", () => { if (agent.id === "scout") showView("scout"); else { showView("town"); revealResident(agent.id); } });
+    home.addEventListener("click", () => {
+      const office = window.StarhavenSecurityWorkspace?.officeForAgent(agent.id);
+      if (office) showView(office);
+      else if (agent.id === "scout") showView("scout");
+      else { showView("town"); revealResident(agent.id); }
+    });
     container.replaceChildren(top, el("p", "profile-personality", agent.personality || agent.bio || "每次相处，都多了解彼此一点。"), home, status);
     $("#conversation-title").textContent = `和${agent.name}聊聊`;
     $("#edit-profile").disabled = agent.editable === false;
@@ -542,83 +556,99 @@
     return fence;
   }
 
-  function plotSvg(agent, map) {
-    // The plot is 320x280: the house artwork still occupies the original
-    // 320x240 box, so the extra 40px is a foreground band the yard can spill
-    // into. Keeping the art untouched is what stops the houses deforming.
-    const svg = svgNode("svg", { class: "plot-svg", viewBox: `0 0 ${map.plot[0]} ${map.plot[1]}`, width: map.plot[0], height: map.plot[1], "shape-rendering": "crispEdges", "aria-hidden": "true" });
-    const variant = (agent.house?.variant || 0) % 4;
-    // Open lawns blend into the meadow; only the small garden has a fence.
-    svg.append(pixelPath("M20 24h68V12h134v8h62v20h20v150h-14v25h-62v11H78v-9H28v-21H12V58h8Z", "#d2e1b1"),
-      pixelPath("M34 42h76V28h101v12h67v132h-22v35H92v-13H34Z", "#d9e6bd"));
-    const rand = mulberry32(81 + variant);
-    for (let i = 0; i < 46; i++) {
-      const x = 16 + Math.floor(rand() * 94) * 3, y = 21 + Math.floor(rand() * 66) * 3;
-      svg.append(pixelRect(x, y, 3, 3, i % 4 ? "#c3d69f" : "#e3ebca"));
-    }
-    const topEntry = agent.plot.pos[1] > map.core[1] + map.core[3];
-    if (topEntry) svg.append(pixelRect(150, 0, 20, 34, "#dfd1a9"));
-    svg.append(pixelPath("M148 182h24v24h8v34h-38v-24h6Z", "#d8c99e"), pixelRect(151, 199, 15, 3, "#e5dcbe"), pixelRect(146, 225, 8, 3, "#c8b98e"));
-    // The doorstep path runs on into the foreground band so the taller plot
-    // does not end in a bare strip of grass below the walkway.
-    const foreground = map.plot[1] - 240;
-    if (foreground > 0) {
-      svg.append(pixelRect(142, 240, 38, foreground - 8, "#d8c99e"),
-        pixelRect(142, 240, 38, 3, "#e5dcbe"),
-        pixelRect(146, 246, 8, 3, "#c8b98e"));
-    }
-    svg.append(pixelTree(variant % 2 ? 278 : 38, 64, variant));
-    const house = houseArtGroup(agent);
-    house.setAttribute("transform", "translate(40 18)");
-    svg.append(house, window.StarhavenHouseArt.yard(agent));
-    return svg;
+  function plotOrigin(agent, map) {
+    if (!agent.house?.painted) return agent.plot.pos;
+    // Keep the original village landmarks and saved plot coordinates intact.
+    // Only their artwork changes: the doorway sits just north of the main road.
+    const r = agent.house.rect;
+    const snap = value => Math.round(value / 2) * 2;
+    return [snap(map.core[0] + (r.x + r.w / 2) * map.core[2] - 160),
+      snap(map.core[1] + (r.y + r.h) * map.core[3] - 200)];
   }
 
-  function houseArtGroup(agent) {
-    return window.StarhavenHouseArt.house(agent);
+  function houseLights(art) {
+    // Keep the exact ancestor transforms of each pane while placing its light
+    // outside the night tint. No blur or glow can soften the pixel outlines.
+    const light = art.cloneNode(true);
+    function prune(node) {
+      node.removeAttribute("data-pixel-art");
+      for (const child of [...node.children]) {
+        if (child.matches(".house-window-light,.house-window-glint,.house-lamp-light")) continue;
+        prune(child);
+        if (!child.children.length) child.remove();
+      }
+    }
+    prune(light);
+    return light;
+  }
+
+  function plotSvg(agent, map) {
+    // WKWebView reliably applies CSS filters to root SVGs, but not nested
+    // SVG groups. Keep both layers in the same unscaled plot coordinate space.
+    const attributes = { viewBox: "0 0 320 280", width: 320, height: 280, "shape-rendering": "crispEdges", "aria-hidden": "true" };
+    const ground = svgNode("svg", { ...attributes, class: "plot-svg plot-daylight-art" });
+    const variant = (agent.house?.variant || 0) % 4;
+    const layout = window.StarhavenHouseArt.layout(agent);
+    if (!agent.house?.painted) {
+      // Residential lawns stay inside their existing plots. The two landmarks
+      // use the village's original ground, river and paths without covering it.
+      ground.append(pixelPath("M20 24h68V12h134v8h62v20h20v150h-14v25h-62v11H78v-9H28v-21H12V58h8Z", "#d2e1b1"),
+        pixelPath("M34 42h76V28h101v12h67v132h-22v35H92v-13H34Z", "#d9e6bd"));
+      const rand = mulberry32(81 + variant);
+      for (let i = 0; i < 46; i++) {
+        const x = 16 + Math.floor(rand() * 94) * 3, y = 21 + Math.floor(rand() * 66) * 3;
+        ground.append(pixelRect(x, y, 3, 3, i % 4 ? "#c3d69f" : "#e3ebca"));
+      }
+      ground.append(pixelRect(layout.doorstep.x - 12, layout.doorstep.y, 24, 280 - layout.doorstep.y, "#dfd1a9"),
+        pixelRect(layout.doorstep.x - 9, layout.doorstep.y, 18, 280 - layout.doorstep.y, "#e7ddbb"));
+    } else {
+      const [, originY] = plotOrigin(agent, map);
+      const streetY = map.core[1] + 380;
+      const pathEnd = Math.min(280, streetY - originY);
+      if (pathEnd > layout.doorstep.y) {
+        ground.append(pixelRect(layout.doorstep.x - 12, layout.doorstep.y, 24, pathEnd - layout.doorstep.y, "#c9c69e"),
+          pixelRect(layout.doorstep.x - 9, layout.doorstep.y, 18, pathEnd - layout.doorstep.y, "#e7ddbb"));
+      }
+    }
+    const house = window.StarhavenHouseArt.house(agent), yard = window.StarhavenHouseArt.yard(agent);
+    ground.append(house, yard);
+    const lights = svgNode("svg", { ...attributes, class: "plot-svg plot-night-lights" });
+    lights.append(houseLights(house), houseLights(yard));
+    const layers = document.createDocumentFragment();
+    layers.append(ground, lights);
+    return layers;
   }
 
   function renderPlot(agent, map) {
     if (!map || !agent.plot?.pos) return null;
-    if (agent.house?.painted) {
-      // 村心老建筑：命中区直接盖在老地图的建筑物上。
-      const group = el("div", `plot painted${agent.id === ui.selected ? " selected" : ""}`);
-      const r = agent.house.rect || {};
-      const rectX = map.core[0] + (r.x || 0) * map.core[2];
-      const rectY = map.core[1] + (r.y || 0) * map.core[3];
-      const rectW = (r.w || 0.2) * map.core[2];
-      const rectH = (r.h || 0.3) * map.core[3];
-      const hit = el("button", "home-hit painted-hit");
-      hit.type = "button";
-      hit.dataset.agent = agent.id;
-      hit.setAttribute("aria-label", agent.id === "scout" ? "进入星探的观察站，查看材料架和资料书架" : `进入${agent.house.name || agent.home}，与${agent.name}对话`);
-      hit.style.left = `${rectX}px`; hit.style.top = `${rectY}px`;
-      hit.style.width = `${rectW}px`; hit.style.height = `${rectH}px`;
-      hit.append(buildingLabel(agent));
-      hit.addEventListener("click", () => { if (agent.id === "scout") { selectAgent(agent.id); showView("scout"); } else selectAgent(agent.id, true); });
-      group.append(hit);
-      const sprite = residentSprite(agent);
-      sprite.style.left = `${agent.plot.pos[0]}px`;
-      sprite.style.top = `${agent.plot.pos[1] + rectH * 0.3}px`;
-      if (agent.id !== "scout") group.append(sprite);
-      return group;
-    }
-    const plot = el("div", `plot${agent.id === ui.selected ? " selected" : ""}`);
-    plot.style.left = `${agent.plot.pos[0]}px`;
-    plot.style.top = `${agent.plot.pos[1]}px`;
-    plot.style.width = `${map.plot[0]}px`;
-    plot.style.height = `${map.plot[1]}px`;
+    const layout = window.StarhavenHouseArt.layout(agent);
+    const [x, y] = plotOrigin(agent, map);
+    const plot = el("div", `plot${agent.house?.painted ? " painted" : ""}${agent.id === ui.selected ? " selected" : ""}`);
+    plot.dataset.residentHome = agent.id;
+    plot.style.left = `${x}px`; plot.style.top = `${y}px`;
+    plot.style.width = "320px"; plot.style.height = "280px";
     plot.append(plotSvg(agent, map));
     const hit = el("button", "home-hit");
-    hit.type = "button";
-    hit.dataset.agent = agent.id;
-    hit.setAttribute("aria-label", `进入${agent.house.name || agent.home}，与${agent.name}对话`);
+    hit.type = "button"; hit.dataset.agent = agent.id;
+    hit.style.left = `${layout.hit.x}px`; hit.style.top = `${layout.hit.y}px`;
+    hit.style.width = `${layout.hit.width}px`; hit.style.height = `${layout.hit.height}px`;
+    const office = window.StarhavenSecurityWorkspace?.officeForAgent(agent.id);
+    hit.setAttribute("aria-label", office ? `进入${agent.house.name || agent.home}，查看巡检与日报` : agent.id === "scout" ? "进入星探的观察站，查看材料架和资料书架" : `进入${agent.house.name || agent.home}，与${agent.name}对话`);
     const label = buildingLabel(agent);
-    label.style.top = `${window.StarhavenHouseArt.labelY(agent)}px`;
+    label.style.left = `${layout.label.x - layout.hit.x}px`;
+    label.style.top = `${layout.label.y - layout.hit.y}px`;
     hit.append(label);
-    hit.addEventListener("click", () => selectAgent(agent.id, true));
+    hit.addEventListener("click", () => {
+      if (office) { selectAgent(agent.id); showView(office); }
+      else if (agent.id === "scout") { selectAgent(agent.id); showView("scout"); }
+      else selectAgent(agent.id, true);
+    });
     plot.append(hit);
-    if (agent.id !== "scout") plot.append(residentSprite(agent));
+    if (agent.id !== "scout" && !office) {
+      const sprite = residentSprite(agent);
+      sprite.style.left = `${layout.resident.x}px`; sprite.style.top = `${layout.resident.y}px`;
+      plot.append(sprite);
+    }
     return plot;
   }
 
@@ -674,11 +704,13 @@
 
   function revealResident(id) {
     if (id === "scout") { window.StarhavenScoutWorkspace?.locate(); return; }
+    const office = window.StarhavenSecurityWorkspace?.officeForAgent(id);
+    if (office) { window.StarhavenSecurityWorkspace.locate(office); return; }
     const agent = ui.state?.agents.find(item => item.id === id), scene = $("#town-scene"), map = ui.state?.map;
     if (!agent?.plot?.pos || !map || !scene.clientWidth) return;
-    const [x, y] = agent.plot.pos;
-    const center = agent.house?.painted ? [x, y] : [x + map.plot[0] / 2, y + map.plot[1] / 2];
-    centerMap(center);
+    const [x, y] = plotOrigin(agent, map);
+    const layout = window.StarhavenHouseArt.layout(agent);
+    centerMap([x + layout.resident.x, y + layout.resident.y + 35]);
   }
 
   function initMapPan() {
@@ -850,13 +882,25 @@
       avenues.push({ top: Math.round(top + (room - height) / 2), bottom, height });
       road(0, Math.round(top + (room - height) / 2), width, height);
     }
+    // The southern row also has a street beneath its doors. Keep a margin
+    // inside the world instead of ending every final driveway on bare grass.
+    const lastBottom = rowCentres[rowCentres.length - 1] + map.plot[1] / 2;
+    const worldBottom = mapOrigin(map)[1] + map.world[1];
+    if (worldBottom - lastBottom >= 26) {
+      const top = Math.round(lastBottom + (worldBottom - lastBottom - 14) / 2);
+      avenues.push({ top, height: 14 });
+      road(0, top, width, 14);
+    }
     const occupied = new Set(ui.state.agents.filter(agent => Number.isInteger(agent.plot?.slot)).map(agent => agent.plot.slot));
     (map.slots || []).forEach(([cx, cy], index) => {
       if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
-      // A short path stub links each house down to the avenue beneath it.
+      // Match the 24px doorstep exactly, extending through the avenue edge
+      // rather than leaving a fixed-length strip separated by a grass seam.
       const stub = Math.round(cy + map.plot[1] / 2);
-      if (avenues.some(avenue => avenue.top >= stub && avenue.top - stub <= 24)) {
-        svg.append(pixelRect(cx - 11, stub, 22, 17, "#dfd1a9"));
+      const avenue = avenues.find(item => item.top >= stub && item.top - stub <= 40);
+      if (occupied.has(index) && avenue) {
+        const length = avenue.top - stub + avenue.height;
+        svg.append(pixelRect(cx - 12, stub, 24, length, "#dfd1a9"), pixelRect(cx - 9, stub, 18, length, "#e7ddbb"));
       }
     });
     for (let i = 0; i < 38; i++) {
@@ -924,6 +968,7 @@
       traveller.setAttribute("aria-pressed", String(scout.id === ui.selected));
     }
     window.StarhavenScoutWorkspace?.renderMap(world, map);
+    window.StarhavenSecurityWorkspace?.renderMap(world, map);
     applyMapTransform();
   }
 
@@ -1376,6 +1421,7 @@
   $("#today-label").textContent = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   const showSettingsInitially = location.hash === "#settings";
   window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, centerMap, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
+  window.StarhavenSecurityWorkspace?.init({ api, el, toast, showView, centerMap, selectAgent, getAvatar: chosenAvatar, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
   initMapPan();
   loadSkins();

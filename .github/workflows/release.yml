@@ -23,10 +23,12 @@ jobs:
       - run: uv python install 3.12
       - name: Check browser code and walking behavior
         run: |
-          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js; do
+          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/security-workspace.js; do
             node --check "$script"
           done
           node tests/test_scout_journey.js
+          node tests/test_house_art.js
+          node tests/test_security_workspace.js
       - name: Test and build
         run: |
           uv run --python 3.12 --no-project python -m unittest discover -s tests -v
@@ -89,11 +91,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js')) {
+          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/security-workspace.js')) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           node tests/test_scout_journey.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_house_art.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_security_workspace.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv python install 3.12
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

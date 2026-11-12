@@ -314,6 +314,29 @@ class HTTPTest(TownFixture):
         connection.close()
         return status, response_headers, body
 
+    def test_security_endpoints_expose_real_jobs_but_never_accept_client_reports(self):
+        status, _, body = self.request("GET", "/api/security")
+        self.assertEqual(status, 200)
+        state = json.loads(body)
+        self.assertEqual([office["id"] for office in state["offices"]], ["police", "inspection"])
+        self.assertIn("server_now", state)
+        status, _, _ = self.request("POST", "/api/security/schedule", {"office":"police", "enabled":False, "time":"09:30"})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("POST", "/api/security/patrol", {"office":"police", "status":"passed"})[0], 400)
+        self.assertEqual(self.request("POST", "/api/security/records", {"status":"passed"})[0], 404)
+        self.assertEqual(self.request("PATCH", "/api/security/records", {"status":"passed"})[0], 404)
+        for query in ("office=no", "limit=0", "before=-1", "limit=5&limit=6", "unknown=1"):
+            self.assertEqual(self.request("GET", "/api/security/records?" + query)[0], 400)
+        # Startup may already be doing today's catch-up patrol. Disabling the
+        # schedule does not cancel real work, so wait for that job to finish.
+        with self.server.app.security.lock:
+            workers = list(self.server.app.security.workers.values())
+        for worker in workers:
+            worker.join(3)
+        status, _, body = self.request("POST", "/api/security/patrol", {"office":"police"})
+        self.assertEqual(status, 202)
+        self.assertEqual(json.loads(body)["jobs"][0]["office"], "police")
+
     def test_origin_host_and_client_headers(self):
         self.assertEqual(self.request("GET", "/api/state")[0], 200)
         valid_origin = "http://127.0.0.1:%s" % self.port

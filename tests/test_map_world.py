@@ -107,6 +107,8 @@ class MapWorldTest(unittest.TestCase):
         self.start()
         agents = self.agents()
         self.assertEqual(len(agents), 30)
+        self.assertTrue(self.app.security_workspace()["resident_notice"])
+        self.assertEqual(len(self.app.security_workspace()["offices"]), 2)
         slots = [agents["legacy-%s" % i]["plot"]["slot"] for i in range(28)]
         self.assertEqual(len(set(slots)), 28)
         for index in range(28):

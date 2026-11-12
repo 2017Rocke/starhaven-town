@@ -8,11 +8,13 @@
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/scout-workspace.css">
+  <link rel="stylesheet" href="/security-workspace.css">
   <script src="/house-art.js" defer></script>
   <script src="/scout-art.js" defer></script>
   <script src="/forest-art.js" defer></script>
   <script src="/scout-journey.js" defer></script>
   <script src="/scout-workspace.js" defer></script>
+  <script src="/security-workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -33,6 +35,8 @@
     <symbol id="i-clock" viewBox="0 0 24 24"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5zm4 3v6l4 3"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9 3h6v3h3v3h3v6h-3v3h-3v3H9v-3H6v-3H3V9h3V6h3V3zm0 6h6v6H9V9z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M4 4h16v10l-4 4-4 3-4-3-4-4V4zm8 3v8M8 11h8"/></symbol>
+    <symbol id="i-inspection" viewBox="0 0 24 24"><path d="M3 4h12v12H3V4zm12 8h5v8h-8v-4M6 8h6M6 12h4m9 5 3 3"/></symbol>
   </defs></svg>
 
   <div class="app-shell">
@@ -41,6 +45,8 @@
       <div class="rail-nav" role="tablist" aria-label="小镇功能">
         <button class="nav-item active" id="tab-town" data-view="town" role="tab" aria-selected="true" aria-controls="view-town"><svg><use href="#i-town"/></svg><span>小镇</span></button>
         <button class="nav-item" id="tab-scout" data-view="scout" role="tab" aria-selected="false" aria-controls="view-scout"><svg><use href="#i-book"/></svg><span>观察站</span></button>
+        <button class="nav-item" id="tab-police" data-view="police" role="tab" aria-selected="false" aria-controls="view-police"><svg><use href="#i-shield"/></svg><span>警察署</span></button>
+        <button class="nav-item" id="tab-inspection" data-view="inspection" role="tab" aria-selected="false" aria-controls="view-inspection"><svg><use href="#i-inspection"/></svg><span>稽查署</span></button>
         <button class="nav-item" id="tab-tasks" data-view="tasks" role="tab" aria-selected="false" aria-controls="view-tasks"><svg><use href="#i-board"/></svg><span>任务板</span></button>
         <button class="nav-item" id="tab-growth" data-view="growth" role="tab" aria-selected="false" aria-controls="view-growth"><svg><use href="#i-leaf"/></svg><span>成长册</span></button>
       </div>
@@ -100,6 +106,9 @@
         <div id="scout-materials" class="scout-materials"></div>
         <p class="scout-safety-note">风险标注来自有限范围的静态初筛，需要结合代码复核；未发现线索不代表项目绝对安全。</p>
       </section>
+
+      <section id="view-police" class="view content-view security-view" role="tabpanel" aria-labelledby="tab-police" hidden><div id="security-police"><p class="security-loading">警察署正在翻开值勤簿…</p></div></section>
+      <section id="view-inspection" class="view content-view security-view" role="tabpanel" aria-labelledby="tab-inspection" hidden><div id="security-inspection"><p class="security-loading">稽查署正在翻开值勤簿…</p></div></section>
 
       <section id="view-tasks" class="view content-view" role="tabpanel" aria-labelledby="tab-tasks" hidden>
         <div class="page-heading"><p class="eyebrow">GOOD THINGS TAKE A LITTLE TEAMWORK</p><h1>小镇任务板</h1><p>每件事都有去处，每次交接都有回应。</p></div>

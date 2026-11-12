@@ -67,8 +67,13 @@ class ProviderBridge:
         self.timeout = 150
         self.socket_timeout = 20
         self._opener_factory = opener_factory
+        self._security = None
         self._config_error = False
         self._config = self._load()
+
+    def set_security_office(self, security):
+        """Attach the local audit service; it never receives authentication headers."""
+        self._security = security
 
     def _load(self):
         fallback = {"mode": "codex" if self.codex.executable else "api", "base_url": "", "model": ""}
@@ -188,6 +193,8 @@ class ProviderBridge:
 
     def _perform_request(self, config, key, prompt, context):
         response = None
+        audit = None
+        status_code = None
         try:
             payload = json.dumps({
                 "model": config["model"], "stream": False,
@@ -205,7 +212,26 @@ class ProviderBridge:
             opener = self._opener_factory() if self._opener_factory else urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({}))
             if context["cancel"].is_set():
                 raise RuntimeError("已取消这次回复。")
+            if self._security is not None:
+                try:
+                    audit = self._security.network_check(
+                        url=request.full_url, method="POST", purpose="model",
+                        agent_id=context.get("agent_id", "unassigned"),
+                        allowed_hosts=(urlsplit(config["base_url"]).hostname,),
+                        payload_text=payload.decode("utf-8"),
+                        credential_in_payload=bool(key and (key in prompt or key in config["model"])),
+                        allow_http_loopback=True)
+                except Exception:
+                    raise RuntimeError("稽查署暂时无法记录请求，已暂停发送，请检查治安档案。") from None
+                if not isinstance(audit, dict) or type(audit.get("allowed")) is not bool:
+                    audit = None
+                    raise RuntimeError("稽查署返回了无效的检查结果，已暂停发送。")
+                if audit["allowed"] is not True:
+                    raise RuntimeError("稽查署已暂停本次请求：" + audit.get("reason", "请求未通过规则检查。"))
+            if context["cancel"].is_set() or self._closed:
+                raise RuntimeError("已取消这次回复。")
             response = opener.open(request, timeout=self.socket_timeout)
+            status_code = getattr(response, "status", None)
             context["response"] = response
             if context["cancel"].is_set():
                 raise RuntimeError("已取消这次回复。")
@@ -227,6 +253,7 @@ class ProviderBridge:
                 raise RuntimeError("模型回复过长，请缩小问题范围后重试。")
             context["reply"] = content.strip().replace(key, "[密钥已隐藏]") if key else content.strip()
         except urllib.error.HTTPError as exc:
+            status_code = exc.code
             if exc.code in (301, 302, 303, 307, 308):
                 context["error"] = "模型地址发生重定向，已停止发送。请填写服务商提供的最终 API 地址。"
             elif exc.code in (401, 403):
@@ -250,11 +277,21 @@ class ProviderBridge:
                     response.close()
                 except OSError:
                     pass
+            if audit is not None and audit.get("allowed") and self._security is not None:
+                try:
+                    self._security.network_result(audit, ok="reply" in context, status_code=status_code,
+                                                  error="请求未完成" if "reply" not in context else None)
+                except Exception:
+                    context.pop("reply", None)
+                    context["error"] = "请求结果未能写入稽查档案，请检查治安系统。"
             context["done"].set()
             with self._lock:
                 self._pending.discard(context["thread"])
 
     def generate(self, prompt, cancel_event):
+        return self.generate_for_agent(prompt, cancel_event, "unassigned")
+
+    def generate_for_agent(self, prompt, cancel_event, agent_id):
         with self._lock:
             if self._closed or cancel_event.is_set():
                 raise RuntimeError("已取消这次回复。")
@@ -271,13 +308,19 @@ class ProviderBridge:
                     key = self.credentials.get(config["base_url"])
                 except CredentialError as exc:
                     raise RuntimeError(str(exc)) from exc
-                context = {"cancel": threading.Event(), "done": threading.Event()}
+                context = {"cancel": threading.Event(), "done": threading.Event(), "agent_id": agent_id}
                 worker = threading.Thread(target=self._perform_request, args=(config, key, prompt, context), daemon=True, name="town-model-request")
                 context["thread"] = worker
                 worker.town_context = context
                 self._pending.add(worker)
                 worker.start()
         if use_codex:
+            if self._security is not None:
+                try:
+                    self._security.external_notice(agent_id=agent_id, purpose="codex",
+                        message="本次对话使用本机 Codex；小镇无法核验其实际网络目的地、请求与重定向，仅记录外部调用边界。")
+                except Exception:
+                    raise RuntimeError("稽查署暂时无法记录外部调用，已暂停对话，请检查治安档案。") from None
             return self.codex.generate(prompt, cancel_event)
         deadline = time.monotonic() + self.timeout
         while not context["done"].wait(.05):

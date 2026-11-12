@@ -32,10 +32,10 @@ class StarterResidentsTest(unittest.TestCase):
         self.app = TownApp(self.root / "data", OfflineBridge(), self.root / "team", report_root=self.root / "reports")
         return self.app.state()
 
-    def test_fresh_town_has_six_public_profiles_without_private_history(self):
+    def test_fresh_town_has_eight_public_profiles_without_private_history(self):
         state = self.start()
-        self.assertEqual([a["name"] for a in state["agents"]], ["领航", "星探", "吉吉", "东日", "科德", "爬山佬"])
-        self.assertEqual([a["plot"]["slot"] for a in state["agents"][2:]], [0, 1, 2, 3])
+        self.assertEqual([a["name"] for a in state["agents"]], ["领航", "星探", "吉吉", "东日", "科德", "爬山佬", "巡检警官", "网安稽查官"])
+        self.assertEqual([a["plot"]["slot"] for a in state["agents"][2:]], [0, 1, 2, 3, 4, 5])
         self.assertEqual([a["home"] for a in state["agents"]][2:5], ["吉吉的节拍工坊", "东日的蓝图研舍", "科德的暖羽鸡舍"])
         for agent in state["agents"]:
             self.assertEqual(agent["memories"], [])
@@ -50,7 +50,7 @@ class StarterResidentsTest(unittest.TestCase):
         with self.app.db() as db:
             db.execute("DELETE FROM agents WHERE id='resident-kede'")
         state = self.start()
-        self.assertEqual(len(state["agents"]), 5)
+        self.assertEqual(len(state["agents"]), 7)
         actual = next(a for a in state["agents"] if a["id"] == "resident-jiji")
         for field in ("name", "avatar", "memories", "plot", "house"):
             self.assertEqual(actual[field], updated[field])
@@ -82,7 +82,7 @@ class StarterResidentsTest(unittest.TestCase):
             self.assertEqual(con.execute("SELECT count(*) FROM agents").fetchone()[0], 0)
         finally:
             con.close()
-        self.assertEqual(len(self.start()["agents"]), 6)
+        self.assertEqual(len(self.start()["agents"]), 8)
 
 
 if __name__ == "__main__":
