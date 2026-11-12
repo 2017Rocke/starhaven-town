@@ -192,6 +192,32 @@ internal sealed class TownWindow : Form
     // The control is replaced when the first initialisation fails.
     private WebView2 browser = new WebView2();
     internal const string NoSandbox = "--no-sandbox";
+    // Moving residents need not use the static map-resident class. Count homes
+    // by identity, then require their actual actors and both office workspaces.
+    // This exact script is exercised by tests/test_windows_probe.js.
+    internal const string SelfTestProbe = @"(function () {
+        var map = document.querySelector('.map-art');
+        var residents = Array.from(new Set(Array.from(document.querySelectorAll('.plot[data-resident-home]'), function (home) { return home.dataset.residentHome; }).filter(Boolean))).sort();
+        var actors = new Set(Array.from(document.querySelectorAll('.map-resident[data-agent]'), function (actor) { return actor.dataset.agent; }));
+        var offices = { police: 'resident-officer', inspection: 'resident-inspector' };
+        var securityActors = Object.keys(offices).filter(function (office) {
+            var actor = document.querySelector('.security-patrol[data-security-office=' + office + ']');
+            var picture = actor && actor.querySelector('img');
+            if (!picture || !picture.complete || picture.naturalWidth <= 0) return false;
+            actors.add(offices[office]);
+            return true;
+        });
+        var workspaces = Object.keys(offices).filter(function (office) { return !!document.querySelector('#security-' + office + ' .security-job'); });
+        return JSON.stringify({
+            title: document.title,
+            ready: !!(map && map.complete && map.naturalWidth > 0 && residents.length && residents.every(function (id) { return actors.has(id); }) && securityActors.length === 2 && workspaces.length === 2),
+            residents: residents.length,
+            resident_ids: residents,
+            security_actors: securityActors,
+            security_workspaces: workspaces,
+            errors: window.__starhavenTestErrors || []
+        });
+    })()";
     private readonly CancellationTokenSource closing = new CancellationTokenSource();
     private readonly System.Windows.Forms.Timer health = new System.Windows.Forms.Timer();
     private Process backend;
@@ -270,7 +296,7 @@ internal sealed class TownWindow : Form
                     DateTime renderDeadline = DateTime.UtcNow.AddSeconds(15);
                     while (DateTime.UtcNow < renderDeadline)
                     {
-                        string value = await browser.CoreWebView2.ExecuteScriptAsync("JSON.stringify({title:document.title,ready:!!(document.querySelector('.map-art')&&document.querySelector('.map-art').complete&&document.querySelector('.map-art').naturalWidth>0&&document.querySelector('.map-resident[data-agent]')),residents:document.querySelectorAll('.map-resident[data-agent]').length,errors:window.__starhavenTestErrors||[]})");
+                        string value = await browser.CoreWebView2.ExecuteScriptAsync(SelfTestProbe);
                         page = serializer.Deserialize<Dictionary<string, object>>(serializer.Deserialize<string>(value));
                         if (Convert.ToBoolean(page["ready"])) break;
                         await Task.Delay(100, closing.Token);
@@ -278,7 +304,7 @@ internal sealed class TownWindow : Form
                     if (page == null || !Convert.ToBoolean(page["ready"])) throw new Exception("Town map did not render: " + serializer.Serialize(page));
                     var errors = page["errors"] as System.Collections.ICollection;
                     if (errors != null && errors.Count > 0) throw new Exception("Town script errors: " + serializer.Serialize(errors));
-                    File.WriteAllText(Program.SelfTestFile, serializer.Serialize(new { ok = true, port = port, backend_pid = backend.Id, title = page["title"], residents = page["residents"], data_directory = Program.WorkingDataDirectory }), Encoding.UTF8);
+                    File.WriteAllText(Program.SelfTestFile, serializer.Serialize(new { ok = true, port = port, backend_pid = backend.Id, title = page["title"], residents = page["residents"], resident_ids = page["resident_ids"], security_actors = page["security_actors"], security_workspaces = page["security_workspaces"], data_directory = Program.WorkingDataDirectory }), Encoding.UTF8);
                 }
                 catch (Exception exc) { Program.Fail(exc); }
                 finally { Close(); }

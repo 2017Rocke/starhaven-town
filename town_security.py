@@ -49,7 +49,14 @@ def clean(value, limit=500):
     text = redact_text(str(value or ""))
     text = re.sub(r"(https?://[^\s'\"<>?#]+)[?#][^\s'\"<>]*", r"\1?[REDACTED]", text, flags=re.I)
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
-    text = re.sub(r"(?:/(?:Users|home)/[^\s'\"<>]+|/(?:private/)?var/folders/[^\s'\"<>]+|[A-Za-z]:\\Users\\[^\s'\"<>]+)", "[本机路径]", text)
+    # Keep public URL host/path evidence. Outside URLs, redact complete local
+    # absolute paths, including Linux temp paths, Windows drives and UNC shares.
+    # Spaces remain part of a path until a quoting/code delimiter so a private
+    # Windows user/folder name is not leaked after the first space.
+    text = re.sub(
+        r"(?P<url>https?://[^\s'\"<>]+)|"
+        r"(?<![\w./\\:])(?:/(?![\s/])|[A-Za-z]:[\\/]|\\\\)[^\r\n'\"<>|;,)\]}]+",
+        lambda match: match.group("url") or "[本机路径]", text, flags=re.I)
     return text[:limit]
 
 

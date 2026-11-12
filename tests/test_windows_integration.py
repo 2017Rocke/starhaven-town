@@ -23,7 +23,7 @@ INSTALLER = os.environ.get("STARHAVEN_WINDOWS_INSTALLER")
 
 
 def fresh_residents(data_dir):
-    """Verify the packaged defaults were used, including both core characters."""
+    """Verify the packaged defaults were used, including both security officers."""
     with closing(sqlite3.connect(str(data_dir / "town.sqlite3"))) as connection:
         rows = connection.execute("SELECT id,name FROM agents").fetchall()
     identities = {row[0] for row in rows}
@@ -177,11 +177,15 @@ class WindowsNativeIntegrationTest(unittest.TestCase):
                 self.assertTrue(payload.get("graceful_shutdown"), payload)
                 self.assertIn("星栖", payload["title"])
                 self.assertEqual(payload.get("residents"), 8, payload)
+                self.assertEqual(len(set(payload["resident_ids"])), 8, payload)
+                self.assertEqual(set(payload["security_actors"]), {"police", "inspection"}, payload)
+                self.assertEqual(set(payload["security_workspaces"]), {"police", "inspection"}, payload)
                 self.assertTrue((data_dir / "town.sqlite3").is_file())
                 self.assertTrue(Path(payload["data_directory"]).samefile(data_dir), "native app used a different data directory")
                 count, identities, names = fresh_residents(data_dir)
                 self.assertEqual(count, 8)
-                self.assertTrue({"linghang", "scout"}.issubset(identities), identities)
+                self.assertTrue({"linghang", "scout", "resident-officer", "resident-inspector"}.issubset(identities), identities)
+                self.assertEqual(set(payload["resident_ids"]), identities, payload)
                 self.assertTrue({"吉吉", "东日", "科德", "爬山佬"}.issubset(names), names)
                 if attempt:
                     self.assertEqual((data_dir / "keep-me.txt").read_text(encoding="utf-8"), "升级后保留")
@@ -240,9 +244,13 @@ $exists = Test-Path -LiteralPath $link -PathType Leaf
                 self.assertTrue(launch.get("ok"), launch)
                 self.assertTrue(launch.get("graceful_shutdown"), launch)
                 self.assertEqual(launch.get("residents"), 8, launch)
+                self.assertEqual(len(set(launch["resident_ids"])), 8, launch)
+                self.assertEqual(set(launch["security_actors"]), {"police", "inspection"}, launch)
+                self.assertEqual(set(launch["security_workspaces"]), {"police", "inspection"}, launch)
                 count, identities, names = fresh_residents(Path(temporary) / "桌面启动 数据")
                 self.assertEqual(count, 8)
-                self.assertTrue({"linghang", "scout"}.issubset(identities), identities)
+                self.assertTrue({"linghang", "scout", "resident-officer", "resident-inspector"}.issubset(identities), identities)
+                self.assertEqual(set(launch["resident_ids"]), identities, launch)
                 self.assertTrue({"吉吉", "东日", "科德", "爬山佬"}.issubset(names), names)
             finally:
                 uninstaller = target / "unins000.exe"

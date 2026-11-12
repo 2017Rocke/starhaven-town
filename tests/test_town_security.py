@@ -102,6 +102,38 @@ class StaticInspectionTest(OfficeFixture):
             self.assertIn('sensitive_path', office['latest_report']['coverage']['skipped'])
         self.assertIn('api.example.test/data', stored)
 
+    def test_cross_platform_absolute_paths_are_redacted_without_losing_relative_or_url_evidence(self):
+        private_paths = [
+            '/tmp/short-temp-user/linux-private-result.txt',
+            '/var/tmp/another-user/linux-private-input.txt',
+            '/home/Private User/home-private-book.txt',
+            r'C:\Temp\win-private-result.txt',
+            r'D:\Private Work\win-private-input.txt',
+            r'\\private-server\private-share\unc-private-file.txt',
+        ]
+        lines = ['os.system("read %s")' % path for path in private_paths]
+        lines.extend([
+            'os.system("read relative/project.txt")',
+            r'os.system("read relative\project.txt")',
+            'requests.get("https://example.test/public/path?key=private-url-query#private-url-fragment")',
+        ])
+        self.write('workspaces/scout/skills/paths.py', '\n'.join(lines))
+        self.run_patrol()
+        api = self.office.records(limit=50)
+        with self.office.db() as db:
+            stored = [json.loads(row[0]) for row in db.execute('SELECT payload FROM security_records')]
+        for evidence in (api['records'], stored):
+            snippets = '\n'.join(finding['snippet'] for record in evidence for finding in record.get('findings', []))
+            for private in ('short-temp-user', 'another-user', 'Private User', 'Private Work',
+                            'private-server', 'private-share', 'linux-private-result', 'linux-private-input',
+                            'home-private-book', 'win-private-result', 'win-private-input', 'unc-private-file',
+                            'private-url-query', 'private-url-fragment'):
+                self.assertNotIn(private, json.dumps(evidence), private)
+            self.assertIn('relative/project.txt', snippets)
+            self.assertIn(r'relative\project.txt', snippets)
+            self.assertIn('https://example.test/public/path', snippets)
+            self.assertIn('[本机路径]', snippets)
+
     def test_rule_version_is_program_owned_and_old_rules_cannot_remain_current(self):
         self.write('workspaces/scout/books/note.md', 'ordinary document')
         self.run_patrol('police')

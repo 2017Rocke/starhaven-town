@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,15 @@ def load_windows_app():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class WindowsNativeProbeTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node is required to exercise the native WebView probe")
+    def test_native_probe_counts_dynamic_residents_and_waits_for_both_offices(self):
+        script = Path(__file__).with_name("test_windows_probe.js")
+        result = subprocess.run([shutil.which("node"), str(script)], capture_output=True,
+                                text=True, encoding="utf-8", timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class WindowsAppHelpersTest(unittest.TestCase):
