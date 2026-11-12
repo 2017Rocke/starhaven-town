@@ -41,7 +41,7 @@ class StarterResidentsTest(unittest.TestCase):
             self.assertEqual(agent["memories"], [])
             self.assertEqual(self.app.messages(agent["id"])["messages"], [])
         self.assertEqual(state["map"]["origin"], [0, -520])
-        self.assertEqual(state["map"]["world"], [2880, 1840])
+        self.assertEqual(state["map"]["world"], [2880, 2200])
         self.assertEqual(state["map"]["core"], [960, 330, 960, 660])
 
     def test_restart_preserves_custom_edits_and_does_not_reseed_removed_profiles(self):
