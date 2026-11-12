@@ -543,7 +543,10 @@
   }
 
   function plotSvg(agent, map) {
-    const svg = svgNode("svg", { class: "plot-svg", viewBox: "0 0 320 240", width: 320, height: 240, "shape-rendering": "crispEdges", "aria-hidden": "true" });
+    // The plot is 320x280: the house artwork still occupies the original
+    // 320x240 box, so the extra 40px is a foreground band the yard can spill
+    // into. Keeping the art untouched is what stops the houses deforming.
+    const svg = svgNode("svg", { class: "plot-svg", viewBox: `0 0 ${map.plot[0]} ${map.plot[1]}`, width: map.plot[0], height: map.plot[1], "shape-rendering": "crispEdges", "aria-hidden": "true" });
     const variant = (agent.house?.variant || 0) % 4;
     // Open lawns blend into the meadow; only the small garden has a fence.
     svg.append(pixelPath("M20 24h68V12h134v8h62v20h20v150h-14v25h-62v11H78v-9H28v-21H12V58h8Z", "#d2e1b1"),
@@ -556,6 +559,14 @@
     const topEntry = agent.plot.pos[1] > map.core[1] + map.core[3];
     if (topEntry) svg.append(pixelRect(150, 0, 20, 34, "#dfd1a9"));
     svg.append(pixelPath("M148 182h24v24h8v34h-38v-24h6Z", "#d8c99e"), pixelRect(151, 199, 15, 3, "#e5dcbe"), pixelRect(146, 225, 8, 3, "#c8b98e"));
+    // The doorstep path runs on into the foreground band so the taller plot
+    // does not end in a bare strip of grass below the walkway.
+    const foreground = map.plot[1] - 240;
+    if (foreground > 0) {
+      svg.append(pixelRect(142, 240, 38, foreground - 8, "#d8c99e"),
+        pixelRect(142, 240, 38, 3, "#e5dcbe"),
+        pixelRect(146, 246, 8, 3, "#c8b98e"));
+    }
     svg.append(pixelTree(variant % 2 ? 278 : 38, 64, variant));
     const house = houseArtGroup(agent);
     house.setAttribute("transform", "translate(40 18)");
@@ -825,12 +836,28 @@
         svg.append(pixelRect(x + step, y + (step % 3) * 3 + 3, 7, 2, "#cbbb91"), pixelRect(x + step + 14, y + h - 7, 11, 2, "#e9dfbd"));
       }
     };
-    for (const y of [520, 800]) { road(0, y, map.core[0], 20); road(map.core[0] + map.core[2], y, width - map.core[0] - map.core[2], 20); }
-    road(0, 268, width, 14); road(0, 1070, width, 14);
+    // Roads are derived from the plot rows: one avenue centred in each corridor
+    // between neighbouring rows. Deriving them means a change to PLOT_H or to
+    // the row pitch can never leave a road cutting through a house.
+    const rowCentres = [...new Set((map.slots || []).map(([, cy]) => cy))].sort((a, b) => a - b);
+    const avenues = [];
+    for (let i = 0; i < rowCentres.length - 1; i++) {
+      const top = rowCentres[i] + map.plot[1] / 2;
+      const bottom = rowCentres[i + 1] - map.plot[1] / 2;
+      const room = bottom - top;
+      if (room < 14) continue;
+      const height = room >= 40 ? 20 : 14;
+      avenues.push({ top: Math.round(top + (room - height) / 2), bottom, height });
+      road(0, Math.round(top + (room - height) / 2), width, height);
+    }
     const occupied = new Set(ui.state.agents.filter(agent => Number.isInteger(agent.plot?.slot)).map(agent => agent.plot.slot));
     (map.slots || []).forEach(([cx, cy], index) => {
       if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
-      if (cy > 300 && cy < 1000) svg.append(pixelRect(cx - 11, cy + 119, 22, 17, "#dfd1a9"));
+      // A short path stub links each house down to the avenue beneath it.
+      const stub = Math.round(cy + map.plot[1] / 2);
+      if (avenues.some(avenue => avenue.top >= stub && avenue.top - stub <= 24)) {
+        svg.append(pixelRect(cx - 11, stub, 22, 17, "#dfd1a9"));
+      }
     });
     for (let i = 0; i < 38; i++) {
       const x = 25 + Math.floor(rand() * (width - 50)), y = i % 2 ? 289 : 1047;
