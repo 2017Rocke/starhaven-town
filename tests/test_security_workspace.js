@@ -120,13 +120,16 @@ check("an active animation flushes stale status even between throttled paints", 
   // Execute the actual animation scheduler with a controlled clock and queue;
   // mounting the office DOM is unrelated to this request-timeout regression.
   const source=fs.readFileSync(path.join(__dirname,"../web/security-workspace.js"),"utf8");
-  const scheduler=source.match(/  (function animate\(\) \{[\s\S]*?\n  \})\n  function locate/);
-  assert.ok(scheduler,"the production animation scheduler must be exercised");
-  for(const reduced of [false,true]) {
+  const schedulers=["\n","\r\n"].map(newline=>{
+    const scheduler=source.replace(/\r?\n/g,newline).match(/  (function animate\(\) \{[\s\S]*?\r?\n  \})\r?\n  function locate/);
+    assert.ok(scheduler,"the production animation scheduler must be exercised with LF and CRLF checkouts");
+    return scheduler[1];
+  });
+  for(const scheduler of schedulers) for(const reduced of [false,true]) {
     let clock=14990,confirmed=0,nextId=1;
     const queued=new Map(),painted=[],state={animation:null,frame:14985};
     const fresh=()=>clock-confirmed<15000;
-    const animate=vm.runInNewContext(`(${scheduler[1]})`,{
+    const animate=vm.runInNewContext(`(${scheduler})`,{
       state,freshState:fresh,document:{hidden:false},OFFICES:{police:{},inspection:{}},
       actionFor:()=>({canStart:false}),motionReduced:()=>reduced,
       requestAnimationFrame:callback=>{const id=nextId++;queued.set(id,callback);return id;},
