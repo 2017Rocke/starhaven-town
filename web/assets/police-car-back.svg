@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 48" shape-rendering="crispEdges">
+  <title>巡逻警车背面</title>
+  <desc>朝上行驶的蓝白像素警车，后窗、后备厢和红色尾灯区别于正面。</desc>
+  <rect x="3" y="44" width="22" height="4" fill="#6d795e33"/>
+  <rect x="1" y="7" width="4" height="10" fill="#46545b"/>
+  <rect x="23" y="7" width="4" height="10" fill="#46545b"/>
+  <rect x="1" y="31" width="4" height="10" fill="#46545b"/>
+  <rect x="23" y="31" width="4" height="10" fill="#46545b"/>
+  <rect x="6" y="1" width="16" height="43" fill="#cbd4cd"/>
+  <rect x="3" y="5" width="22" height="36" fill="#e8e9da"/>
+  <rect x="4" y="7" width="3" height="31" fill="#718696"/>
+  <rect x="21" y="7" width="3" height="31" fill="#718696"/>
+  <rect x="8" y="3" width="12" height="7" fill="#e8e9da"/>
+  <rect x="7" y="11" width="14" height="6" fill="#91b0ad"/>
+  <rect x="8" y="12" width="11" height="1" fill="#d7e1ce"/>
+  <rect x="0" y="15" width="4" height="3" fill="#536b7b"/>
+  <rect x="24" y="15" width="4" height="3" fill="#536b7b"/>
+  <rect x="7" y="18" width="14" height="11" fill="#cbd4cd"/>
+  <rect x="5" y="20" width="18" height="3" fill="#536b7b"/>
+  <rect x="6" y="19" width="6" height="3" fill="#7e9eb9"/>
+  <rect x="12" y="19" width="4" height="3" fill="#e8e9da"/>
+  <rect x="16" y="19" width="6" height="3" fill="#c4897d"/>
+  <rect x="7" y="29" width="14" height="7" fill="#536b7b"/>
+  <rect x="8" y="29" width="12" height="6" fill="#91b0ad"/>
+  <rect x="9" y="30" width="10" height="1" fill="#d7e1ce"/>
+  <rect x="9" y="32" width="10" height="1" fill="#a8b8b7"/>
+  <rect x="7" y="36" width="14" height="4" fill="#cbd4cd"/>
+  <rect x="12" y="37" width="4" height="1" fill="#536b7b"/>
+  <rect x="4" y="40" width="20" height="5" fill="#718696"/>
+  <rect x="5" y="40" width="5" height="3" fill="#c4897d"/>
+  <rect x="18" y="40" width="5" height="3" fill="#c4897d"/>
+  <rect x="11" y="41" width="6" height="2" fill="#e8e9da"/>
+  <rect x="4" y="45" width="20" height="2" fill="#536b7b"/>
+</svg>

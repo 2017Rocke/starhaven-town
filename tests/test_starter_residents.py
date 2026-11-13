@@ -40,11 +40,11 @@ class StarterResidentsTest(unittest.TestCase):
         for agent in state["agents"]:
             self.assertEqual(agent["memories"], [])
             self.assertEqual(self.app.messages(agent["id"])["messages"], [])
-        self.assertEqual(state["map"]["origin"], [-64, -520])
-        self.assertEqual(state["map"]["world"], [3008, 2460])
+        self.assertEqual(state["map"]["origin"], [-64, -580])
+        self.assertEqual(state["map"]["world"], [3008, 2520])
         self.assertEqual(state["map"]["core"], [960, 330, 960, 660])
         self.assertEqual(state["map"]["road"], {"width": 64, "verge": 18})
-        self.assertEqual(state["map"]["streets"], [308, 688, 1068, 1448, 1828])
+        self.assertEqual(state["map"]["streets"], [248, 688, 1068, 1448, 1828])
         self.assertEqual(state["map"]["rings"], [-64, 2880])
 
     def test_restart_preserves_custom_edits_and_does_not_reseed_removed_profiles(self):

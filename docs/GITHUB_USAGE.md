@@ -22,13 +22,14 @@ git push origin main
 
 ## 发布新版安装包
 
-1. 修改 `VERSION` 与 `CHANGELOG.md`，完成测试，再按 [构建指南](RELEASING.md) 生成新版 DMG、Windows 安装 EXE / ZIP、源码 ZIP 和 SHA-256 校验文件。
-2. 将本次源码推送到 `main`。
-3. 在仓库右侧点击 **Releases → Draft a new release**。
-4. 在 **Choose a tag** 填新版本号，例如 `v1.5.1`，选择创建标签，目标分支选 `main`。
-5. 填标题与更新说明，将 macOS DMG、Windows x64 安装 EXE 或便携 ZIP、源码 ZIP 及对应 `.sha256` 文件拖到附件区域。
-6. 等待附件上传完毕，检查版本与文件名称。未完成正式签名公证的预览包应在说明中写清楚；确认后点击 **Publish release**。
+所有开发者遵循同一份 [发布规范](RELEASING.md)。协助发布的智能体使用仓库内的 [starhaven-release 技能](../.agents/skills/starhaven-release/SKILL.md)。
 
-不要把 DMG、安装 EXE 或便携 ZIP 提交进源码目录。已有版本的附件保留，后续更新创建新版本，便于下载与回退。普通用户运行新版安装器即可升级，小镇数据继续保留。
+1. 同步远端代码，保留尚未提交的工作；更新 `VERSION`、`CHANGELOG.md`、README 和 `docs/UPDATE_版本.md`，写明本次功能、验证结果与尚未验收的平台。
+2. 完成检查，确认公开源码不含个人存档、账号、聊天或密钥。将审核过的文件提交并推送到 `main`，等待该提交的 **Checks** 成功。
+3. 在这个提交上创建明确的版本标签，例如 `v1.13.0`，仅推送这一枚标签；不要推送所有本地标签，也不要移动已发布标签。
+4. 标签触发 **Build and publish release**：自动构建 Mac Apple 芯片、Mac Intel、Windows x64 安装版和便携版，以及源码包。所有平台构建和安装检查通过后，工作流汇总附件并校验版本、来源提交及 SHA-256。
+5. 工作流先准备草稿，确认五个文件与五个校验文件齐全后公开 Release。完成后检查发布页面的版本、提交、十个附件，并实际下载核对校验和。
 
-也可在 **Actions → Build installers → Run workflow** 手动生成 macOS/Windows 构建产物，下载 Artifacts 并验收后再发布；这一步不会自动公开或替换 Release 附件。
+构建失败不会公开半成品。先查看失败原因；重试方法与已存在草稿的处理见 [发布规范](RELEASING.md)。代码需要修复时创建新提交和新的版本标签，不强推或替换已公开版本的附件。
+
+不要把 DMG、安装 EXE 或便携 ZIP 提交进源码目录，也不要绕过自动流程手动混传不同提交的安装包。普通用户运行新版安装器即可升级，小镇数据继续保留。

@@ -7,7 +7,11 @@
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.StarhavenScoutJourney = api;
 })(typeof window === "object" ? window : globalThis, () => {
-  const ROUTE = Object.freeze([[1590, 850], [1510, 850], [1510, 730], [1498, 730], [1498, 646], [1420, 646], [1420, 300], [1380, 300], [1380, -84], [1320, -84], [1320, -220]].map(Object.freeze));
+  // Only the yard approach needs its own paving. Beyond it, the traveller
+  // follows the village's existing eastern ring and northern street.
+  const YARD_ROUTE = Object.freeze([[1590, 930], [1510, 930], [1510, 796]].map(Object.freeze));
+  const YARD_PATH_WIDTH = 28;
+  const ROUTE = Object.freeze([...YARD_ROUTE, [1510, 674], [1468, 674], [1468, 634], [1420, 634], [1420, 280], [1380, 280], [1380, -144], [1320, -144], [1320, -280]].map(Object.freeze));
   const clamp = (v, min = 0, max = 1) => Math.max(min, Math.min(max, Number(v) || 0));
   const epoch = value => typeof value === "number" ? value : (Date.parse(value) || 0);
   const distance = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -41,9 +45,9 @@
     const t = Math.max(0, elapsed / 1000) % 28;
     for (let i = 1; i < schedule.length; i++) {
       const [end, x] = schedule[i], [start, previous] = schedule[i - 1];
-      if (t <= end) return { point: [1320 + previous + (x - previous) * (t - start) / (end - start), -220], direction: x < previous ? "left" : x > previous ? "right" : "front", moving: x !== previous };
+      if (t <= end) return { point: [1320 + previous + (x - previous) * (t - start) / (end - start), -280], direction: x < previous ? "left" : x > previous ? "right" : "front", moving: x !== previous };
     }
-    return { point: [1320, -220], direction: "front", moving: false };
+    return { point: [1320, -280], direction: "front", moving: false };
   }
   function sample(journey, now = Date.now(), reduced = false) {
     const j = journey || {}, start = epoch(j.started_at), forest = epoch(j.forest_arrival_at), returning = epoch(j.return_started_at), arrival = epoch(j.arrival_at), home = epoch(j.home_at);
@@ -69,5 +73,5 @@
     }
     return { ...pose, phase, moving, cargo: Math.max(0, Number(j.cargo_count) || 0), outcome: j.outcome || "", message: j.message || "", canStart: phase === "home" && j.can_start !== false };
   }
-  return { ROUTE, along, prefix, patrol, sample, length, epoch };
+  return { ROUTE, YARD_ROUTE, YARD_PATH_WIDTH, along, prefix, patrol, sample, length, epoch };
 });

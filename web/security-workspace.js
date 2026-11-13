@@ -3,16 +3,17 @@
 // The animation is a view of persisted work, never a source of scan results.
 // Pure route/sampling helpers are also available to dependency-free Node tests.
 ((root, factory) => {
-  const api = factory();
+  const api = factory(typeof module === "object" && module.exports ? require("./road-navigation.js") : root.StarhavenRoadNavigation);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.StarhavenSecurityWorkspace = api;
-})(typeof window === "object" ? window : globalThis, () => {
+})(typeof window === "object" ? window : globalThis, navigation => {
   const OFFICES = Object.freeze({
     police: { agent: "resident-officer", name: "警察署", avatar: "officer", title: "文件巡检", copy: "沿着材料的来路，检查文件与内容变化。", verb: "开始文件巡检" },
     inspection: { agent: "resident-inspector", name: "稽查署", avatar: "inspector", title: "密钥与网络审计", copy: "检查密钥与外发线索，查阅小镇的网络往来。", verb: "开始密钥与外发巡检" },
   });
   const ACTIVE = new Set(["preparing", "scanning", "filing"]);
   const TERMINAL = new Set(["completed", "partial", "failed", "interrupted"]);
+  const blockedRoutes = new WeakMap();
   const PHASES = { idle: "在署内待命", preparing: "正在准备巡检", scanning: "正在检查", filing: "正在整理记录", completed: "本次检查已结束", partial: "本次覆盖不完整", failed: "本次检查未完成", interrupted: "上次检查已中断" };
   const STATUS = { review_required: "需要复核", limited_no_findings: "本次范围未发现线索", incomplete: "覆盖不完整", blocked: "请求已阻止", observed: "已记录", allowed: "请求已放行" };
   const FRESHNESS = { current: "当前内容指纹匹配", stale: "内容已变化 · 需重新检查", rules_changed: "检查规则已更新 · 需重新检查", missing: "原文件已缺失", not_applicable: "不适用文件时效", unverified: "尚未核对当前内容" };
@@ -39,6 +40,24 @@
     return { point: [...points[points.length - 1]], direction: "down" };
   }
   function routeFor(agent, map, layout) {
+    const blockedKey = JSON.stringify([agent.id, agent.plot.pos, layout.resident]);
+    const failed = map.road_network && blockedRoutes.get(map.road_network)?.get(blockedKey);
+    if (failed) return failed;
+    try {
+      const planned = navigation?.plan(agent, map, layout, agent.id === "resident-inspector" ? "car" : "walk");
+      if (planned) return planned;
+      if (map.road_network) throw new Error("Resident has no valid road access");
+    } catch {
+      // Bad or partially upgraded road data must not interrupt state loading or
+      // send an actor across the square. The inspection itself remains real.
+      const home = [agent.plot.pos[0] + layout.resident.x, agent.plot.pos[1] + layout.resident.y + 70];
+      const route = { home, approach: [home, home], loop: [home, home], blocked: true };
+      if (map.road_network && typeof map.road_network === "object") {
+        const failures = blockedRoutes.get(map.road_network) || new Map();
+        failures.set(blockedKey, route); blockedRoutes.set(map.road_network, failures);
+      }
+      return route;
+    }
     const [x, y] = agent.plot.pos, width = map.world[0], plotHeight = map.plot[1];
     const home = [x + layout.resident.x, y + layout.resident.y + 70];
     const bottom = y + plotHeight;
@@ -50,34 +69,51 @@
     const owned = array(map.streets).find(top => top >= bottom && top - bottom <= 40);
     const next = rows.find(cy => cy - plotHeight / 2 > bottom);
     const worldBottom = (map.origin?.[1] || 0) + map.world[1];
-    const street = owned !== undefined ? owned + roadWidth / 2
+    let street = owned !== undefined ? owned + roadWidth / 2
       : next === undefined ? bottom + (worldBottom - bottom) / 2 : (bottom + next - plotHeight / 2) / 2;
+    // A legacy map's north row has only a forty-pixel gap before the square.
+    if (bottom < map.core[1] && street >= map.core[1] - 14) street = bottom + (map.core[1] - bottom) / 2;
     const inVillageRows = street > map.core[1] && street < map.core[1] + map.core[3];
-    const minX = inVillageRows && home[0] > map.core[0] + map.core[2] ? map.core[0] + map.core[2] + 24 : 24;
-    const maxX = inVillageRows && home[0] < map.core[0] ? map.core[0] - 24 : width - 24;
+    const originX = map.origin?.[0] || 0;
+    const minX = inVillageRows && home[0] > map.core[0] + map.core[2] ? map.core[0] + map.core[2] + 24 : originX + 24;
+    const maxX = inVillageRows && home[0] < map.core[0] ? map.core[0] - 24 : originX + width - 24;
     const entrance = [home[0], Math.round(street)];
     const left = [Math.max(minX, home[0] - 280), entrance[1]], right = [Math.min(maxX, home[0] + 280), entrance[1]];
-    return { home, approach: [home, entrance], loop: [entrance, left, right, entrance] };
+    return { home, approach: [home, entrance], loop: [entrance, left, right, entrance], sharedAccess: street < map.core[1] && map.core[1] - street < 24 };
   }
   function patrolPose(route, elapsed, speed) {
+    if (route.blocked) return { point: [...route.home], direction: "down", phase: "home", moving: false, onFoot: true, navigationBlocked: true };
+    if (route.navigation) {
+      const pose = navigation.active(route, elapsed / 1000, speed);
+      return { point: pose.point, direction: pose.direction, phase: pose.phase, moving: pose.moving, onFoot: pose.onFoot };
+    }
     const travelled = Math.max(0, elapsed) / 1000 * speed, approachLength = length(route.approach);
-    if (travelled < approachLength) return { ...along(route.approach, travelled), phase: "outbound" };
+    if (travelled < approachLength) return { ...along(route.approach, travelled), phase: "outbound", onFoot: !!route.sharedAccess };
     return { ...along(route.loop, (travelled - approachLength) % Math.max(1, length(route.loop))), phase: "patrolling" };
   }
   function sample(job, route, now = Date.now(), reduced = false, speed = 42) {
     let pose = { point: [...route.home], direction: "down", phase: "home", moving: false, working: false };
     const start = epoch(job?.started_at), finish = epoch(job?.finished_at);
     if (start && ACTIVE.has(job?.phase)) {
-      pose = { ...patrolPose(route, now - start, speed), moving: now > start, working: true };
+      const action = patrolPose(route, now - start, speed);
+      pose = { ...action, moving: now > start && action.moving !== false, working: true };
     } else if (start && finish >= start && TERMINAL.has(job?.phase)) {
-      const from = patrolPose(route, finish - start, speed).point;
-      const path = from[1] === route.home[1] || from[0] === route.home[0] ? [from, route.home] : [from, route.approach[1], route.home];
-      const travelled = Math.max(0, now - finish) / 1000 * speed;
-      if (travelled < length(path)) pose = { ...along(path, travelled), phase: "returning", moving: true, working: false };
+      if (route.navigation) {
+        const action = navigation.returning(route, (finish - start) / 1000, Math.max(0, now - finish) / 1000, speed);
+        pose = { point: action.point, direction: action.direction, phase: action.phase, moving: action.moving, onFoot: action.onFoot, working: false };
+      } else {
+        const from = patrolPose(route, finish - start, speed).point;
+        const path = from[1] === route.home[1] || from[0] === route.home[0] ? [from, route.home] : [from, route.approach[1], route.home];
+        const travelled = Math.max(0, now - finish) / 1000 * speed;
+        if (travelled < length(path)) {
+          pose = { ...along(path, travelled), phase: "returning", moving: true, working: false };
+          if (route.sharedAccess && pose.direction === "up") pose.onFoot = true;
+        }
+      }
     }
     // Reduced motion preserves the real phase while keeping the actor at one
     // meaningful place. No animation state is written back to the backend.
-    if (reduced) pose = { ...pose, point: [...(pose.working ? route.approach[1] : route.home)], moving: false };
+    if (reduced) pose = { ...pose, point: [...(pose.working ? route.navigation ? route.start.point : route.approach[1] : route.home)], direction: route.navigation && pose.working ? ["right", "down", "left", "up"][route.start.heading] : pose.direction, moving: false, onFoot: !pose.working || !!route.sharedAccess };
     return { ...pose, canStart: !pose.working && pose.phase === "home" };
   }
   function redact(value, max = 4000) {
@@ -248,7 +284,7 @@
     if (!refs) return;
     const fresh = freshState();
     const movement = { home: "在署内待命", outbound: "沿道路前往巡检路段", patrolling: id === "inspection" ? "警车沿道路巡行" : "警官正在步行巡街", returning: "本次工作已结束，正在返署" };
-    refs.motion.textContent = !fresh ? "行动状态暂未确认，等待重新连接。" : movement[action.phase];
+    refs.motion.textContent = !fresh ? "行动状态暂未确认，等待重新连接。" : action.navigationBlocked ? "道路暂不可通行，留在署内处理本次工作。" : movement[action.phase];
     refs.sceneState.textContent = !fresh ? "值勤状态未确认" : action.phase === "returning" ? "正在返署" : action.working ? "本次值勤进行中" : "在署内待命";
     refs.start.disabled = !data || !fresh || local.starting || !action.canStart;
     refs.phase.textContent = !fresh && data ? `上次记录 · ${PHASES[data.job?.phase] || "状态待核对"}` : data ? PHASES[data.job?.phase] || "状态待核对" : "等待值勤记录";
@@ -391,8 +427,9 @@
       renderAction(id, action);
       if (!actor) continue;
       const agent = host.getState()?.agents?.find(item => item.id === config.agent);
-      const car = id === "inspection" && action.phase !== "home";
-      const source = `/assets/${car ? "police-car" : agent && host.getAvatar ? host.getAvatar(agent) : config.avatar}.svg`, picture = actor.querySelector("img");
+      const car = id === "inspection" && action.phase !== "home" && !action.onFoot;
+      const vehicle = action.direction === "up" ? "police-car-back" : action.direction === "down" ? "police-car-front" : "police-car";
+      const source = `/assets/${car ? vehicle : agent && host.getAvatar ? host.getAvatar(agent) : config.avatar}.svg`, picture = actor.querySelector("img");
       if (picture.getAttribute("src") !== source) picture.setAttribute("src", source);
       actor.style.left = `${Math.round(action.point[0])}px`; actor.style.top = `${Math.round(action.point[1])}px`;
       actor.classList.toggle("is-car", car); actor.classList.toggle("is-moving", freshState() && action.moving);
@@ -406,6 +443,9 @@
     if (state.animation || !freshState() || document.hidden || !Object.keys(OFFICES).some(id => !actionFor(id).canStart)) return;
     state.animation = requestAnimationFrame(now => {
       state.animation = null;
+      // Freshness may expire between two throttled paints while a request is
+      // still pending. Flush the uncertain status once before stopping frames.
+      if (!freshState()) { paintMap(); return; }
       if (now - state.frame >= (motionReduced() ? 1000 : 40)) { state.frame = now; paintMap(); }
       animate();
     });

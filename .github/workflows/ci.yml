@@ -16,6 +16,8 @@ jobs:
             python: '3.9'
     runs-on: ${{ matrix.os }}
     env:
+      PYTHON: python
+      STARHAVEN_TEST_PYTHON: python
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
     steps:
@@ -33,8 +35,13 @@ jobs:
       - run: node --check web/scout-workspace.js
       - run: node --check web/forest-art.js
       - run: node --check web/scout-journey.js
+      - run: node --check web/road-art.js
+      - run: node --check web/road-navigation.js
       - run: node --check web/security-workspace.js
       - run: node tests/test_scout_journey.js
       - run: node tests/test_house_art.js
+      - run: node tests/test_village_plaza.js
+      - run: node tests/test_road_art.js
+      - run: node tests/test_road_navigation.js
       - run: node tests/test_security_workspace.js
       - run: python scripts/export_source.py

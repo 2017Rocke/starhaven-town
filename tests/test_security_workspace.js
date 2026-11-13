@@ -1,5 +1,8 @@
 "use strict";
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 const { sample, routeFor, redact, subjectText, officeForAgent, agentForOffice } = require("../web/security-workspace.js");
 const start = Date.parse("2026-11-12T09:30:00+08:00");
 const time = seconds => new Date(start + seconds * 1000).toISOString();
@@ -81,7 +84,7 @@ check("routes follow actual housing avenues and avoid the village centre", () =>
     assert.equal(path.approach[1][1], street + map.road.width / 2);
     for (const point of path.loop) {
       assert.equal(point[1], path.approach[1][1]);
-      assert.ok(point[0] >= 24 && point[0] <= 2984);
+      assert.ok(point[0] >= -40 && point[0] <= 2920);
       if (cy === 530) assert.ok(cx < 960 ? point[0] < 960 : point[0] > 1920);
     }
   }
@@ -91,6 +94,51 @@ check("routes follow actual housing avenues and avoid the village centre", () =>
   const fallback = routeFor({ plot: { pos: [640, 690] } }, legacy, layout);
   const bottom = 690 + 280, worldBottom = -520 + 2200;
   assert.ok(fallback.approach[1][1] > bottom && fallback.approach[1][1] < worldBottom);
+});
+check("legacy northern routes and eastern vehicles stay clear of the square and world edge", () => {
+  const map = { world: [3008, 2460], origin: [-64, -520], core: [960, 330, 960, 660], plot: [320, 280],
+    road: { width: 64 }, streets: [308, 688, 1068, 1448, 1828], slots: [[1197,150],[1563,150],[1920,150],[2720,910],[2720,530],[2720,1290]] };
+  for (const [cx,cy] of map.slots) {
+    const route = routeFor({ plot: { pos: [cx-160,cy-140] } }, map, { resident: { x:160,y:162 } });
+    for (const [x,y] of route.loop) {
+      assert.ok(x - 24 >= -64 && x + 24 <= 2944);
+      assert.ok(!(x + 24 > 960 && x - 24 < 1920 && y + 14 > 330 && y - 14 < 990));
+    }
+    if (cy === 150) assert.equal(route.approach[1][1],310);
+  }
+});
+check("invalid network data keeps work truthful without breaking town rendering", () => {
+  const home = { id: "resident-inspector", plot: { slot:0,pos:[640,770] } };
+  const map = { plot:[320,280],road_network:{nodes:[{id:"broken",x:800,y:1100}],edges:[{from:"missing",to:"broken"}],accesses:[]} };
+  const route = routeFor(home,map,{resident:{x:160,y:162}});
+  assert.equal(route.blocked,true);
+  const pose = sample(active,route,start+5000,false,72);
+  assert.equal(pose.working,true); assert.equal(pose.moving,false); assert.equal(pose.canStart,false); assert.equal(pose.onFoot,true);
+  near(pose.point,route.home);
+});
+check("an active animation flushes stale status even between throttled paints", () => {
+  // Execute the actual animation scheduler with a controlled clock and queue;
+  // mounting the office DOM is unrelated to this request-timeout regression.
+  const source=fs.readFileSync(path.join(__dirname,"../web/security-workspace.js"),"utf8");
+  const scheduler=source.match(/  (function animate\(\) \{[\s\S]*?\n  \})\n  function locate/);
+  assert.ok(scheduler,"the production animation scheduler must be exercised");
+  for(const reduced of [false,true]) {
+    let clock=14990,confirmed=0,nextId=1;
+    const queued=new Map(),painted=[],state={animation:null,frame:14985};
+    const fresh=()=>clock-confirmed<15000;
+    const animate=vm.runInNewContext(`(${scheduler[1]})`,{
+      state,freshState:fresh,document:{hidden:false},OFFICES:{police:{},inspection:{}},
+      actionFor:()=>({canStart:false}),motionReduced:()=>reduced,
+      requestAnimationFrame:callback=>{const id=nextId++;queued.set(id,callback);return id;},
+      paintMap:()=>painted.push({fresh:fresh(),time:clock})
+    });
+    animate();assert.equal(queued.size,1);
+    clock=15001;
+    const callback=queued.get(state.animation);queued.delete(state.animation);callback(clock);
+    assert.deepEqual(painted,[{fresh:false,time:15001}]);assert.equal(state.animation,null);assert.equal(queued.size,0);
+    animate();assert.equal(painted.length,1,"starting while stale must not repeatedly paint");assert.equal(queued.size,0);
+    confirmed=clock;animate();assert.equal(queued.size,1,"a confirmed response can resume the scheduler");
+  }
 });
 check("evidence display redacts common credential formats and limits output", () => {
   const inputs = ["Authorization: Bearer secret-token", "https://host.test/a?api_key=secret-token&ok=1", '{"password":"secret-token"}', "https://user:secret-token@host.test/a"];

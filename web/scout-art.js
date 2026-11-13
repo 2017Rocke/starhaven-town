@@ -78,18 +78,19 @@
     r(x + 4, y + 4, 8, 8, C.stone); r(x + 6, y + 6, 4, 4, C.woodPale);
   }
   function cart(r, x, y, rawCount = 0) {
-    wheel(r, x + 8, y + 30); wheel(r, x + 48, y + 30);
-    r(x + 4, y + 28, 60, 4, C.woodDark);
-    r(x + 6, y + 18, 56, 12, C.wood);
-    r(x + 6, y + 18, 56, 4, C.woodLight);
-    r(x + 6, y + 26, 56, 4, C.woodDark);
-    r(x + 10, y + 12, 4, 18, C.woodDark); r(x + 52, y + 12, 4, 18, C.woodDark);
-    r(x + 62, y + 20, 16, 4, C.woodDark); r(x + 76, y + 16, 16, 4, C.woodDark);
-    r(x + 84, y + 14, 8, 4, C.woodLight);
+    // A compact cart fits beside the rack without scaling its pixel strokes.
+    wheel(r, x + 4, y + 20); wheel(r, x + 36, y + 20);
+    r(x, y + 22, 54, 4, C.woodDark);
+    r(x + 2, y + 10, 48, 14, C.wood);
+    r(x + 2, y + 10, 48, 4, C.woodLight);
+    r(x + 2, y + 20, 48, 4, C.woodDark);
+    r(x + 8, y + 4, 4, 20, C.woodDark); r(x + 40, y + 4, 4, 20, C.woodDark);
+    r(x + 48, y + 14, 14, 4, C.woodDark); r(x + 60, y + 10, 12, 4, C.woodDark);
+    r(x + 66, y + 8, 6, 4, C.woodLight);
     const visible = Math.min(3, rawCount);
-    if (visible > 0) log(r, x + 16, y, 38);
-    if (visible > 1) log(r, x + 24, y - 12, 36);
-    if (visible > 2) log(r, x + 12, y - 24, 36);
+    if (visible > 0) log(r, x + 8, y, 34);
+    if (visible > 1) log(r, x + 18, y - 12, 32);
+    if (visible > 2) log(r, x + 6, y - 24, 32);
   }
   function compass(r, x, y, unit = 2) {
     const p = (a, b, w, h, color) => r(x + a * unit, y + b * unit, w * unit, h * unit, color);
@@ -123,7 +124,7 @@
 
   function yard(input = {}) {
     const s = stateOf(input), c = canvas(240, 160, "yard", s.phase), r = c.r;
-    r(16, 124, 148, 8, C.shadow); r(140, 148, 88, 8, C.shadow);
+    r(16, 124, 148, 8, C.shadow); r(166, 150, 72, 4, C.shadow);
     c.group("scout-material-rack", () => {
       r(28, 28, 124, 88, "#b0ad88"); r(32, 32, 116, 80, "#c7c7a1");
       r(20, 24, 8, 104, C.woodDark); r(152, 24, 8, 104, C.woodDark);
@@ -137,9 +138,9 @@
       if (s.phase === "sorting") { r(14, 36, 2, 18, C.gold); r(16, 34, 8, 2, C.gold); r(16, 54, 8, 2, C.gold); }
     });
     c.group("scout-axe", () => { r(174, 42, 18, 4, C.woodDark); axe(r, 170, 44); });
-    c.group("scout-cart", () => cart(r, 142, 108, s.rawCount));
+    c.group("scout-cart", () => cart(r, 166, 118, s.rawCount));
     // Small square trail marks indicate the current motion, not a completion result.
-    if (s.phase === "gathering") { r(196, 94, 4, 4, C.gold); r(206, 86, 4, 4, C.gold); r(214, 78, 4, 4, C.gold); }
+    if (s.phase === "gathering") { r(202, 82, 4, 4, C.gold); r(214, 74, 4, 4, C.gold); r(226, 66, 4, 4, C.gold); }
     if (s.phase === "carrying") { r(126, 128, 8, 2, C.woodLight); r(120, 134, 10, 2, C.woodLight); }
     return c.finish(s.materialCount || s.rawCount ? "星探院落，材料架、原木和手推车" : "星探院落，空材料架和空手推车");
   }
@@ -247,7 +248,7 @@
   }
 
   const hotspots = Object.freeze({
-    yard: Object.freeze({ rack: Object.freeze([16, 12, 148, 116]), cart: Object.freeze([140, 82, 96, 74]) }),
+    yard: Object.freeze({ rack: Object.freeze([16, 12, 148, 116]), cart: Object.freeze([166, 94, 72, 60]) }),
     room: Object.freeze({ books: Object.freeze([32, 36, 192, 148]), booksRight: Object.freeze([436, 36, 172, 148]), materials: Object.freeze([36, 216, 144, 112]), desk: Object.freeze([216, 198, 208, 114]), storage: Object.freeze([468, 208, 120, 96]) }),
   });
   window.StarhavenScoutArt = Object.freeze({ yard, room, icon, sprite, hotspots });

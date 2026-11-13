@@ -288,7 +288,7 @@
       yard.addEventListener("click", () => { selectScene("yard"); host.showView("scout"); });
       world.append(yard);
     }
-    yard.style.left = `${map.core[0] + 570}px`; yard.style.top = `${map.core[1] + 370}px`;
+    yard.style.left = `${map.core[0] + 570}px`; yard.style.top = `${map.core[1] + 450}px`;
     const params = imageParams();
     const signature = JSON.stringify(params);
     if (yard.dataset.signature !== signature) {
@@ -300,12 +300,31 @@
     if (!sign) {
       sign = node("button", "forest-map-sign", "北部森林公园"); sign.type = "button";
       sign.setAttribute("aria-label", "北部森林公园，定位林间采集点");
-      sign.addEventListener("click", () => host.centerMap([1380, -240])); world.append(sign);
+      sign.addEventListener("click", () => host.centerMap([1380, -300])); world.append(sign);
     }
     let apron = world.querySelector(".scout-yard-path");
     if (!apron) {
       apron = node("div", "scout-yard-path"); apron.setAttribute("aria-hidden", "true");
-      apron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 214 238" shape-rendering="crispEdges"><path d="M0 0h104v84h12v120h98v28H90V96H78V22H0Z" fill="#c9c69e"/><path d="M0 4h100v84h12v120h102v20H94V92H82V18H0Z" fill="#e7ddbb"/><path d="M0 8h96v84h12v120h106v12H98V88H86V14H0Z" fill="#ede4c8"/></svg>';
+      const { YARD_ROUTE: points, YARD_PATH_WIDTH: width } = window.StarhavenScoutJourney;
+      const left = Math.min(...points.map(point => point[0])) - width / 2;
+      const top = Math.min(...points.map(point => point[1])) - width / 2;
+      const spanX = Math.max(...points.map(point => point[0])) + width / 2 - left;
+      const spanY = Math.max(...points.map(point => point[1])) + width / 2 - top;
+      Object.assign(apron.style, { left: `${left}px`, top: `${top}px`, width: `${spanX}px`, height: `${spanY}px` });
+      // One continuous stone surface keeps the corners open. Sparse short
+      // joints add texture without reinstating the old three nested outlines.
+      const joints = [], highlights = [];
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i], vertical = a[0] === b[0];
+        const low = Math.min(a[vertical ? 1 : 0], b[vertical ? 1 : 0]);
+        const high = Math.max(a[vertical ? 1 : 0], b[vertical ? 1 : 0]);
+        for (let step = low + 26; step < high - 16; step += 32) {
+          const x = vertical ? a[0] - 8 : step, y = vertical ? step : a[1] - 8;
+          joints.push(`<rect x="${x}" y="${y}" width="${vertical ? 16 : 2}" height="${vertical ? 2 : 16}" fill="#c8c8b6"/>`);
+          highlights.push(`<rect x="${vertical ? x + 2 : x + 8}" y="${vertical ? y + 8 : y + 2}" width="${vertical ? 6 : 8}" height="${vertical ? 8 : 6}" fill="#e5e1d0"/>`);
+        }
+      }
+      apron.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} ${top} ${spanX} ${spanY}" shape-rendering="crispEdges"><polyline points="${points.map(point => point.join(",")).join(" ")}" fill="none" stroke="#dcd9c8" stroke-width="${width}" stroke-linecap="square" stroke-linejoin="miter"/>${joints.join("")}${highlights.join("")}</svg>`;
       world.append(apron);
     }
     let cargo = world.querySelector(".forest-cargo");
@@ -420,7 +439,7 @@
     $("#scout-start").addEventListener("click", start);
     $("#scout-locate").addEventListener("click", locate);
     $("#map-locate-scout").addEventListener("click", locate);
-    $("#map-forest").addEventListener("click", () => { stopFollowing(); host.centerMap([1380, -240]); });
+    $("#map-forest").addEventListener("click", () => { stopFollowing(); host.centerMap([1380, -300]); });
     $("#map-follow-scout").addEventListener("change", event => { sceneState.following = event.target.checked; if (sceneState.following) locate(); });
     reducedMotion.addEventListener?.("change", () => { paintJourney(); animate(); });
     $("#scout-schedule").addEventListener("submit", saveSettings);

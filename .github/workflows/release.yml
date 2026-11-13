@@ -1,19 +1,64 @@
-name: Build installers
-run-name: Build installers · ${{ github.ref_name }} · ${{ github.sha }}
+name: Build and publish release
+run-name: Release · ${{ inputs.tag || github.ref_name }}
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing immutable version tag, for example v1.13.0'
+        required: true
+        type: string
 permissions:
   contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - name: Validate requested tag syntax
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", os.environ["RELEASE_TAG"]), "Expected vMAJOR.MINOR.PATCH"'
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify tag, version and release notes
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 scripts/check_release.py preflight --tag "$RELEASE_TAG"
+
   macos:
+    needs: preflight
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel]
+        include:
+          - runner: macos-15
+            platform: macos-arm64
+          - runner: macos-15-intel
+            platform: macos-x86_64
     runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -23,11 +68,14 @@ jobs:
       - run: uv python install 3.12
       - name: Check browser code and walking behavior
         run: |
-          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/security-workspace.js; do
+          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/road-art.js web/road-navigation.js web/security-workspace.js; do
             node --check "$script"
           done
           node tests/test_scout_journey.js
           node tests/test_house_art.js
+          node tests/test_village_plaza.js
+          node tests/test_road_art.js
+          node tests/test_road_navigation.js
           node tests/test_security_workspace.js
       - name: Test and build
         run: |
@@ -36,22 +84,31 @@ jobs:
           uv run --python 3.12 --no-project python scripts/build_macos.py --python-runtime "$runtime_root"
           STARHAVEN_TEST_INSTALLER="build/macos-$(uname -m)/安装星栖小镇.app" uv run --python 3.12 --no-project python tests/test_installer_integration.py -v
           uv run --python 3.12 --no-project python scripts/export_source.py
+          uv run --python 3.12 --no-project python scripts/check_release.py stamp --tag "$RELEASE_TAG" --platform "${{ matrix.platform }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: starhaven-${{ matrix.runner }}
+          name: starhaven-${{ matrix.platform }}
           path: dist/*
           if-no-files-found: error
           compression-level: 0
 
   windows:
+    needs: preflight
     # Server 2022 validates packaging. It is NOT a Windows 10 17763.379 test.
     runs-on: windows-2022
     timeout-minutes: 45
     env:
+      PYTHON: python
+      STARHAVEN_TEST_PYTHON: python
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -91,13 +148,19 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/security-workspace.js')) {
+          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/road-art.js', 'web/road-navigation.js', 'web/security-workspace.js')) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           node tests/test_scout_journey.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/test_house_art.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_village_plaza.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_road_art.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_road_navigation.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/test_security_workspace.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -116,6 +179,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run --python 3.12 --no-project python scripts/export_source.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run --python 3.12 --no-project python scripts/check_release.py stamp --tag $env:RELEASE_TAG --platform windows-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: starhaven-windows-x64
@@ -130,3 +195,35 @@ jobs:
           path: build/windows-test-evidence/*
           if-no-files-found: ignore
           retention-days: 7
+
+  publish:
+    needs: [preflight, macos, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: starhaven-*
+          path: build/release-artifacts
+      - name: Validate all builds and exactly ten release assets
+        run: python3 scripts/check_release.py assemble --tag "$RELEASE_TAG"
+      - name: Publish complete release and verify downloaded assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_release.py publish --tag "$RELEASE_TAG"
+      - name: Preserve release verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verification-${{ needs.preflight.outputs.version }}
+          path: build/release-${{ needs.preflight.outputs.version }}-verification.json
+          if-no-files-found: error

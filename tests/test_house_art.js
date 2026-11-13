@@ -175,7 +175,14 @@ check("yard paths align with the entrance", () => {
 check("painted landmarks leave the existing village street unobstructed", () => {
   for (const style of ["command", "observatory"]) {
     const agent = { house: { style, painted: true } };
-    assert.equal(rectangles(art.yard(agent)).length, 0, `${style}: painted landmark added yard furniture`);
+    const equipment = rectangles(art.yard(agent));
+    assert.ok(equipment.length > 0, `${style}: civic equipment is missing`);
+    for (const rect of equipment) {
+      withinCanvas(rect, style);
+      assert.ok(rect.y >= art.layout(agent).doorstep.y, `${style}: equipment overlaps the building`);
+      assert.ok(rect.x + rect.width <= 140 || rect.x >= 180, `${style}: equipment blocks the entrance`);
+      assert.ok(rect.y + rect.height <= 272, `${style}: equipment extends beyond the forecourt`);
+    }
     const house = rectangles(art.house(agent));
     assert.ok(house.length > 0, `${style}: missing landmark`);
     for (const rect of house) {

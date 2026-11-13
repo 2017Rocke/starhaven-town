@@ -795,7 +795,31 @@
   }
   function yard(agent) {
     const {style,p,motif}=resolve(agent),g=group(`yard-${style}-${motif}`);
-    if(agent?.house?.painted && (style==="command"||style==="observatory")) return g;
+    if(agent?.house?.painted && (style==="command"||style==="observatory")) {
+      // Civic forecourts keep their map-owned paths. Light equipment sits on
+      // either side of the entrance; counted materials stay in the real rack.
+      const equipment = (kind, draw) => {
+        const item = group(`civic-${kind}`);
+        item.setAttribute("data-part", "equipment");
+        item.setAttribute("data-equipment", kind);
+        draw(item); g.append(item);
+      };
+      if(style==="command") {
+        equipment("planning-board", item => bulletin(item,p,24,204,96));
+        equipment("meeting-table", item => discussion(item,p,188,200));
+      } else {
+        equipment("telescope", item => telescope(item,p,84,212));
+        equipment("research-table", item => {
+          rect(item,196,236,64,8,p.wood[0]);rect(item,196,236,64,3,p.wood[1]);
+          rect(item,200,244,4,16,p.wood[2]);rect(item,252,244,4,16,p.wood[2]);
+          rect(item,204,216,40,22,C.cream);rect(item,208,220,32,14,"#a4bdb2");
+          for(const x of [214,226,234])rect(item,x,224+(x%4),2,2,C.cream);
+          rect(item,218,224,10,2,p.roof[2]);rect(item,226,226,2,6,p.roof[2]);
+          rect(item,248,226,8,10,p.wood[1]);rect(item,250,222,2,8,C.gold);
+        });
+      }
+      return g;
+    }
     const path=group("front-path");path.setAttribute("data-part","path");g.append(path);
     const step=layout(agent).doorstep.y;
     for(let y=step+8;y<272;y+=18) {

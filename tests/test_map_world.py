@@ -12,8 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
-    PLOT_H, PLOT_SLOTS, PLOT_W, RING_X, ROAD_VERGE, ROAD_W, ROW_PITCH,
-    STREET_Y, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
+    PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
     create_server, design_house, painted_house,
 )
 
@@ -73,54 +72,32 @@ class MapWorldTest(unittest.TestCase):
                                      and y < ry + rh and ry < y + PLOT_H)
             regions.append((x, y, PLOT_W, PLOT_H))
 
-    def test_every_plot_has_a_street_and_the_roads_stay_clear(self):
-        # A two-way street per row plus a ring road at each edge: every doorstep
-        # must open onto tarmac, no plot may cover a road, and the network must
-        # stay connected so a patrol can drive from any house to any other.
-        self.assertEqual(ROAD_VERGE * 2 + ROAD_W, ROW_PITCH - PLOT_H)
-        self.assertEqual(len(STREET_Y), len(set(cy for _, cy in PLOT_SLOTS)))
-        self.assertEqual(RING_X[0], WORLD_X)
-        self.assertEqual(RING_X[1] + ROAD_W, WORLD_X + WORLD_W)
-
-        roads = [(x, y, x + ROAD_W, y + ROAD_W)
-                 for x in RING_X for y in (STREET_Y[0], STREET_Y[-1] + ROAD_W)]
-        roads = []
-        for y in STREET_Y:
-            behind = y < CORE_Y + CORE_H and y + ROAD_W > CORE_Y
-            runs = [(0, CORE_X), (CORE_X + CORE_W, WORLD_W)] if behind else [(0, WORLD_W)]
-            roads += [(x1, y, x2, y + ROAD_W) for x1, x2 in runs]
-        roads += [(x, STREET_Y[0], x + ROAD_W, STREET_Y[-1] + ROAD_W) for x in RING_X]
-
-        def overlap(a, b):
-            return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
-
-        for slot, (cx, cy) in enumerate(PLOT_SLOTS):
-            box = (cx - PLOT_W // 2, cy - PLOT_H // 2, cx + PLOT_W // 2, cy + PLOT_H // 2)
-            with self.subTest(slot=slot):
-                self.assertFalse([road for road in roads if overlap(box, road)])
-                # The driveway leaves the plot's bottom edge and meets a street.
-                driveway = [y for y in STREET_Y if 0 <= y - box[3] <= ROAD_VERGE + 22]
-                self.assertEqual(len(driveway), 1)
-
-        free = {(x, y) for x in range(WORLD_X, WORLD_X + WORLD_W, 4)
-                for y in range(WORLD_Y, WORLD_Y + WORLD_H, 4)
-                if any(r[0] <= x < r[2] and r[1] <= y < r[3] for r in roads)
-                and not any(cx - PLOT_W // 2 <= x < cx + PLOT_W // 2
-                            and cy - PLOT_H // 2 <= y < cy + PLOT_H // 2 for cx, cy in PLOT_SLOTS)}
-
-        def blocked(x, y):
-            return (CORE_X <= x < CORE_X + CORE_W and CORE_Y <= y < CORE_Y + CORE_H)
-
-        free = {cell for cell in free if not blocked(*cell)}
-        seen, queue = {min(free)}, [min(free)]
-        while queue:
-            x, y = queue.pop()
-            for step in ((4, 0), (-4, 0), (0, 4), (0, -4)):
-                neighbour = (x + step[0], y + step[1])
-                if neighbour in free and neighbour not in seen:
-                    seen.add(neighbour)
-                    queue.append(neighbour)
-        self.assertEqual(seen, free)
+    def test_map_publishes_one_road_graph_with_real_entrances_for_all_plots(self):
+        self.start()
+        town_map = self.app.state()["map"]
+        network = town_map["road_network"]
+        self.assertEqual(network["version"], 1)
+        self.assertEqual(town_map["streets"], [248, 688, 1068, 1448, 1828])
+        self.assertEqual(town_map["origin"], [-64, -580])
+        self.assertEqual(town_map["world"], [3008, 2520])
+        self.assertEqual(town_map["road"], {"width": 64, "verge": 18})
+        self.assertEqual(len(network["accesses"]), len(PLOT_SLOTS))
+        pedestrian = {access["id"]: access for access in network["pedestrian_accesses"]}
+        village_entry = pedestrian["village-path"]
+        self.assertEqual((village_entry["width"], village_entry["surface"]), (64, "street"))
+        self.assertEqual(village_entry["bounds"], [1388, 280, 1452, 330])
+        self.assertEqual(village_entry["doorstep"], [1420, 330])
+        self.assertEqual(village_entry["point"], [1420, 280])
+        self.assertEqual(pedestrian["forest-path"]["width"], 26)
+        self.assertEqual(pedestrian["forest-path"]["bounds"], [1367, 227, 1393, 280])
+        nodes = {node["id"]: node for node in network["nodes"]}
+        for access in network["accesses"]:
+            cx, cy = PLOT_SLOTS[access["slot"]]
+            self.assertEqual(access["doorstep"], [cx, cy + PLOT_H // 2])
+            self.assertEqual(access["point"], [nodes[access["node"]]["x"], nodes[access["node"]]["y"]])
+            x, y = access["point"]
+            self.assertTrue(any(edge["bounds"][0] <= x <= edge["bounds"][2]
+                                and edge["bounds"][1] <= y <= edge["bounds"][3] for edge in network["edges"]))
 
     def test_full_legacy_town_migrates_without_losing_profile_or_history(self):
         # Build the pre-map schema independently of the current implementation.
@@ -175,6 +152,65 @@ class MapWorldTest(unittest.TestCase):
         with self.app.db() as db:
             self.assertEqual([tuple(row) for row in db.execute("SELECT * FROM agents ORDER BY rowid")], first_migration)
 
+    def test_northern_street_upgrade_moves_only_old_northern_plots_and_preserves_saved_data(self):
+        # Recreate actual pre-widening plot coordinates, including every occupied
+        # northern slot. Deriving them from today's constants would hide drift.
+        legacy_plots = [
+            (800, 910), (800, 530), (800, 1290), (2080, 910), (2080, 530), (2080, 1290),
+            (1197, 150), (1563, 150), (1202, 1670), (1558, 1670),
+            (480, 910), (480, 530), (480, 1290), (2400, 910), (2400, 530), (2400, 1290),
+            (160, 910), (840, 150), (1920, 150), (840, 1670), (1920, 1670),
+            (160, 530), (160, 1290), (2720, 910), (2720, 530), (2720, 1290),
+            (480, 150), (2400, 1670),
+        ]
+
+        def saved_rows():
+            with self.app.db() as db:
+                return {
+                    "agents": [dict(row) for row in db.execute("SELECT * FROM agents ORDER BY id")],
+                    "messages": [dict(row) for row in db.execute("SELECT * FROM messages ORDER BY id")],
+                    "preferences": [dict(row) for row in db.execute("SELECT * FROM preferences ORDER BY key")],
+                }
+
+        with mock.patch("server.PLOT_SLOTS", legacy_plots):
+            self.start()
+            while len(self.agents()) < MAX_RESIDENTS:
+                self.app.add_agent({"name": "保留伙伴%s" % len(self.agents()), "bio": "升级前的自定义资料"})
+            with self.app.db() as db:
+                for identity in self.agents():
+                    db.execute("UPDATE agents SET memories=? WHERE id=?",
+                               (json.dumps([identity + " 的原有记忆"], ensure_ascii=False), identity))
+                    for role, status, content in (("user", "sent", "保留这段约定"),
+                                                  ("assistant", "complete", "我记得我们之前的约定")):
+                        db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (
+                            identity + "-" + role, identity, role, content, status, "2026-11-12T08:00:00+00:00"))
+                db.execute("INSERT OR REPLACE INTO preferences VALUES ('custom-map-note','keep-me')")
+            before = saved_rows()
+
+        self.start()
+        after = saved_rows()
+        moved_slots = []
+        expected_agents = []
+        for row in before["agents"]:
+            expected = dict(row)
+            plot = json.loads(row["plot"])
+            slot = plot.get("slot")
+            if slot is not None:
+                cx, cy = legacy_plots[slot]
+                self.assertEqual(plot["pos"], [cx - 160, cy - 140])
+                if cy == 150:
+                    plot["pos"][1] -= 60
+                    expected["plot"] = json.dumps(plot, ensure_ascii=False)
+                    moved_slots.append(slot)
+            expected_agents.append(expected)
+        self.assertEqual(sorted(moved_slots), [6, 7, 17, 18, 26])
+        self.assertEqual(after["agents"], expected_agents)
+        self.assertEqual(after["messages"], before["messages"])
+        self.assertEqual(after["preferences"], before["preferences"])
+        for _ in range(2):
+            self.start()
+            self.assertEqual(saved_rows(), after)
+
     def test_migration_repairs_invalid_and_duplicate_slots_preserving_valid_owners(self):
         self.start()
         residents = [self.app.add_agent({"name": "伙伴%s" % i})["agent"] for i in range(9)]
@@ -196,7 +232,8 @@ class MapWorldTest(unittest.TestCase):
         for agent in residents:
             actual = repaired[agent["id"]]
             self.assertIs(type(actual["plot"]["slot"]), int)
-            self.assertGreaterEqual(min(actual["plot"]["pos"]), 0)
+            self.assertGreaterEqual(actual["plot"]["pos"][0], WORLD_X)
+            self.assertGreaterEqual(actual["plot"]["pos"][1], WORLD_Y)
             self.assertEqual(actual["house"]["style"], "cottage")
             self.assertFalse(actual["house"]["painted"])
         self.assertIsNone(repaired["linghang"]["plot"]["slot"])

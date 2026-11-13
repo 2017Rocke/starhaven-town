@@ -558,12 +558,18 @@
 
   function plotOrigin(agent, map) {
     if (!agent.house?.painted) return agent.plot.pos;
-    // Keep the original village landmarks and saved plot coordinates intact.
-    // Only their artwork changes: the doorway sits just north of the main road.
+    // Align both civic buildings with the northern row beside the village.
+    // Rendering, lights, hit targets and resident location share this origin;
+    // persisted character and plot records remain independent of the artwork.
     const r = agent.house.rect;
     const snap = value => Math.round(value / 2) * 2;
+    const neighbours = (map.slots || []).filter(([x, y]) =>
+      (x < map.core[0] || x > map.core[0] + map.core[2]) &&
+      y >= map.core[1] && y < map.core[1] + map.core[3]);
+    const row = Math.min(...neighbours.map(([, y]) => y));
+    const rowTop = Number.isFinite(row) && map.plot ? row - map.plot[1] / 2 : map.core[1] + 60;
     return [snap(map.core[0] + (r.x + r.w / 2) * map.core[2] - 160),
-      snap(map.core[1] + (r.y + r.h) * map.core[3] - 200)];
+      snap(rowTop)];
   }
 
   function houseLights(art) {
@@ -601,15 +607,9 @@
       }
       ground.append(pixelRect(layout.doorstep.x - 12, layout.doorstep.y, 24, 280 - layout.doorstep.y, "#dfd1a9"),
         pixelRect(layout.doorstep.x - 9, layout.doorstep.y, 18, 280 - layout.doorstep.y, "#e7ddbb"));
-    } else {
-      const [, originY] = plotOrigin(agent, map);
-      const streetY = map.core[1] + 380;
-      const pathEnd = Math.min(280, streetY - originY);
-      if (pathEnd > layout.doorstep.y) {
-        ground.append(pixelRect(layout.doorstep.x - 12, layout.doorstep.y, 24, pathEnd - layout.doorstep.y, "#c9c69e"),
-          pixelRect(layout.doorstep.x - 9, layout.doorstep.y, 18, pathEnd - layout.doorstep.y, "#e7ddbb"));
-      }
     }
+    // Landmark entrances belong to the continuous village paving in town.svg.
+    // Overlaying a second doorstep path here leaves seams across the main walk.
     const house = window.StarhavenHouseArt.house(agent), yard = window.StarhavenHouseArt.yard(agent);
     ground.append(house, yard);
     const lights = svgNode("svg", { ...attributes, class: "plot-svg plot-night-lights" });
@@ -864,86 +864,93 @@
       svg.append(pixelRect(x, y, 3, 3, flecks[i % 4]));
       if (i % 3 === 0) svg.append(pixelRect(x + 6, y + 3, 3, 3, flecks[i % 4]));
     }
-    // A street is a two-way road: pavement, kerbs, and a dashed centre line that
-    // separates the two lanes. Width comes from the server so the lane count and
-    // the patrol logic cannot disagree about where the road is.
-    const roadWidth = map.road?.width || 64, verge = map.road?.verge || 18;
-    const street = (x, y, w, h) => {
-      svg.append(pixelRect(x, y, w, h, "#dfd1a9"));
-      const vertical = h > w;
-      if (vertical) {
-        // Kerbs run down the two long sides; the centre line splits the lanes.
-        svg.append(pixelRect(x, y, 2, h, "#e7ddbb"), pixelRect(x + w - 2, y, 2, h, "#d0c197"));
-        const middle = x + Math.round(w / 2) - 1;
-        for (let step = 14; step < h - 14; step += 30) {
-          svg.append(pixelRect(middle, y + step, 2, Math.min(14, y + h - (y + step)), "#c9b98e"));
-        }
-        for (let step = 20; step < h - 20; step += 46) {
-          svg.append(pixelRect(x + 6, y + step, 2, 5, "#e9dfbd"), pixelRect(x + w - 10, y + step + 3, 2, 8, "#cbbb91"));
-        }
-      } else {
-        svg.append(pixelRect(x, y, w, 2, "#e7ddbb"), pixelRect(x, y + h - 2, w, 2, "#d0c197"));
-        const middle = y + Math.round(h / 2) - 1;
-        for (let step = 14; step < w - 14; step += 30) {
-          svg.append(pixelRect(x + step, middle, Math.min(14, x + w - (x + step)), 2, "#c9b98e"));
-        }
-        for (let step = 20; step < w - 20; step += 46) {
-          svg.append(pixelRect(x + step, y + 6, 5, 2, "#e9dfbd"), pixelRect(x + step + 3, y + h - 10, 8, 2, "#cbbb91"));
-        }
-      }
-    };
-    // Streets and ring roads are derived from the plot rows, so changing PLOT_H
-    // or the row pitch can never leave a road cutting through a house.
-    const rowCentres = [...new Set((map.slots || []).map(([, cy]) => cy))].sort((a, b) => a - b);
-    const streets = map.streets?.length ? map.streets.map(y => ({ top: y, height: roadWidth }))
-      : rowCentres.map(cy => ({ top: Math.round(cy + map.plot[1] / 2 + verge), height: roadWidth }));
-    const core = map.core;
-    for (const { top, height } of streets) {
-      // A street that would pass behind the village square stops at its edge and
-      // resumes on the far side: through traffic is meant to use the ring roads,
-      // which keeps the square itself a pedestrian plaza.
-      const behindPlaza = top < core[1] + core[3] && top + height > core[1];
-      if (behindPlaza) {
-        street(0, top, core[0], height);
-        street(core[0] + core[2], top, width - core[0] - core[2], height);
-      } else {
-        street(0, top, width, height);
-      }
-    }
-    // Ring roads close the grid at both edges, so every street meets every other
-    // and no patrol has to reverse on a dead end.
-    const rings = map.rings?.length ? map.rings : [0, width - roadWidth];
-    const topStreet = streets.length ? streets[0].top : 0;
-    const bottomStreet = streets.length ? streets[streets.length - 1].top + roadWidth : height;
-    for (const x of rings) street(x, topStreet, roadWidth, bottomStreet - topStreet);
     const occupied = new Set(ui.state.agents.filter(agent => Number.isInteger(agent.plot?.slot)).map(agent => agent.plot.slot));
-    (map.slots || []).forEach(([cx, cy], index) => {
-      if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
-      // Every row now has its own street, so every doorstep gets a paved driveway
-      // from the last stone step down to the kerb.
-      const stub = Math.round(cy + map.plot[1] / 2);
-      const own = streets.find(item => item.top >= stub && item.top - stub <= verge + 22);
-      if (occupied.has(index) && own) {
-        // The driveway stops at the near kerb: crossing the whole street would
-        // read as a road joining from the other side, which no house has.
-        const length = own.top - stub + 2;
-        svg.append(pixelRect(cx - 12, stub, 24, length, "#dfd1a9"), pixelRect(cx - 9, stub, 18, length, "#e7ddbb"));
+    if (map.road_network && window.StarhavenRoadArt) {
+      (map.slots || []).forEach(([cx, cy], index) => {
+        if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
+      });
+      svg.append(window.StarhavenRoadArt.render(map, { occupiedSlots: [...occupied] }));
+    } else {
+      // A street is a two-way road: pavement, kerbs, and a dashed centre line that
+      // separates the two lanes. Width comes from the server so the lane count and
+      // the patrol logic cannot disagree about where the road is.
+      const roadWidth = map.road?.width || 64, verge = map.road?.verge || 18;
+      const street = (x, y, w, h) => {
+        svg.append(pixelRect(x, y, w, h, "#dfd1a9"));
+        const vertical = h > w;
+        if (vertical) {
+          // Kerbs run down the two long sides; the centre line splits the lanes.
+          svg.append(pixelRect(x, y, 2, h, "#e7ddbb"), pixelRect(x + w - 2, y, 2, h, "#d0c197"));
+          const middle = x + Math.round(w / 2) - 1;
+          for (let step = 14; step < h - 14; step += 30) {
+            svg.append(pixelRect(middle, y + step, 2, Math.min(14, y + h - (y + step)), "#c9b98e"));
+          }
+          for (let step = 20; step < h - 20; step += 46) {
+            svg.append(pixelRect(x + 6, y + step, 2, 5, "#e9dfbd"), pixelRect(x + w - 10, y + step + 3, 2, 8, "#cbbb91"));
+          }
+        } else {
+          svg.append(pixelRect(x, y, w, 2, "#e7ddbb"), pixelRect(x, y + h - 2, w, 2, "#d0c197"));
+          const middle = y + Math.round(h / 2) - 1;
+          for (let step = 14; step < w - 14; step += 30) {
+            svg.append(pixelRect(x + step, middle, Math.min(14, x + w - (x + step)), 2, "#c9b98e"));
+          }
+          for (let step = 20; step < w - 20; step += 46) {
+            svg.append(pixelRect(x + step, y + 6, 5, 2, "#e9dfbd"), pixelRect(x + step + 3, y + h - 10, 8, 2, "#cbbb91"));
+          }
+        }
+      };
+      // Streets and ring roads are derived from the plot rows, so changing PLOT_H
+      // or the row pitch can never leave a road cutting through a house.
+      const rowCentres = [...new Set((map.slots || []).map(([, cy]) => cy))].sort((a, b) => a - b);
+      const streets = map.streets?.length ? map.streets.map(y => ({ top: y, height: roadWidth }))
+        : rowCentres.map(cy => ({ top: Math.round(cy + map.plot[1] / 2 + verge), height: roadWidth }));
+      const core = map.core;
+      for (const { top, height } of streets) {
+        // A street that would pass behind the village square stops at its edge and
+        // resumes on the far side: through traffic is meant to use the ring roads,
+        // which keeps the square itself a pedestrian plaza.
+        const behindPlaza = top < core[1] + core[3] && top + height > core[1];
+        if (behindPlaza) {
+          street(0, top, core[0], height);
+          street(core[0] + core[2], top, width - core[0] - core[2], height);
+        } else {
+          street(0, top, width, height);
+        }
       }
-    });
-    // Flowers line the verges beside each street instead of sitting on a lawn or
-    // a doorstep: the 18px strip between a plot's bottom edge and its kerb. They
-    // stay between the two ring roads so nothing is ever painted on tarmac.
-    const flowerLeft = rings[0] + roadWidth + 24;
-    const flowerRight = Math.min(rings[1], width) - 24;
-    for (let i = 0; i < 38; i++) {
-      const band = streets[i % Math.max(1, streets.length)];
-      if (!band || flowerRight <= flowerLeft) break;
-      const x = flowerLeft + Math.floor(rand() * (flowerRight - flowerLeft));
-      svg.append(pixelFlower(x, band.top - 13 + (i % 2) * 2, i % 2 ? "#dcc38a" : "#ddaf8a"));
+      // Ring roads close the grid at both edges, so every street meets every other
+      // and no patrol has to reverse on a dead end.
+      const rings = map.rings?.length ? map.rings : [0, width - roadWidth];
+      const topStreet = streets.length ? streets[0].top : 0;
+      const bottomStreet = streets.length ? streets[streets.length - 1].top + roadWidth : height;
+      for (const x of rings) street(x, topStreet, roadWidth, bottomStreet - topStreet);
+      (map.slots || []).forEach(([cx, cy], index) => {
+        if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
+        // Every row now has its own street, so every doorstep gets a paved driveway
+        // from the last stone step down to the kerb.
+        const stub = Math.round(cy + map.plot[1] / 2);
+        const own = streets.find(item => item.top >= stub && item.top - stub <= verge + 22);
+        if (occupied.has(index) && own) {
+          // The driveway stops at the near kerb: crossing the whole street would
+          // read as a road joining from the other side, which no house has.
+          const length = own.top - stub + 2;
+          svg.append(pixelRect(cx - 12, stub, 24, length, "#dfd1a9"), pixelRect(cx - 9, stub, 18, length, "#e7ddbb"));
+        }
+      });
+      // Flowers line the verges beside each street instead of sitting on a lawn or
+      // a doorstep: the 18px strip between a plot's bottom edge and its kerb. They
+      // stay between the two ring roads so nothing is ever painted on tarmac.
+      const flowerLeft = rings[0] + roadWidth + 24;
+      const flowerRight = Math.min(rings[1], width) - 24;
+      for (let i = 0; i < 38; i++) {
+        const band = streets[i % Math.max(1, streets.length)];
+        if (!band || flowerRight <= flowerLeft) break;
+        const x = flowerLeft + Math.floor(rand() * (flowerRight - flowerLeft));
+        svg.append(pixelFlower(x, band.top - 13 + (i % 2) * 2, i % 2 ? "#dcc38a" : "#ddaf8a"));
+      }
     }
     if (mapOrigin(map)[1] < 0 && window.StarhavenForestArt) {
       const forest = svgNode("g", { class: "forest-park" });
-      forest.innerHTML = window.StarhavenForestArt.scene(); svg.append(forest);
+      forest.innerHTML = window.StarhavenForestArt.scene({ roadNetwork: !!(map.road_network && window.StarhavenRoadArt) }); svg.append(forest);
     }
     return svg;
   }

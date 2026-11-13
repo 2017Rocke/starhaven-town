@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from scout_workshop import ScoutWorkshop, WorkshopError
 from scout_collect import PublicGitHubClient, discover_repositories, collect_repository
 from town_security import SecurityOffice, SecurityError
+from town_roads import build_road_network
 
 BASE_DIR = Path(__file__).resolve().parent
 STARTER_RESIDENTS_PATH = BASE_DIR / "defaults" / "residents.json"
@@ -61,33 +62,32 @@ SECURITY_RESIDENTS = [{'id': 'resident-officer',
   'avatar': 'inspector',
   'plot_slot': 5}]
 
-# 北部新增 520 像素森林；使用负 Y 原点，已有居民、村心和地块坐标不迁移。
+# 北部森林与最北排住宅上移 60 像素，为北街留出完整道路空间；地块编号保持不变。
 # 村心老地图保持 960×660 原尺寸居中——视口与村心同高，打开时看到的小镇与旧版一模一样。
 # 住宅贴着村心生长：左右两片三层住宅区、上下两排临街小屋，按离村心远近分配，
 # 共 28 块地，加上村心两座老建筑（指挥所、观察站），保留旧版 30 人容量。
 # 双向路网：行距 380 = 地块 280 + 走廊 100，走廊里是 18 路肩 + 64 街道 + 18 路肩。
 # 64 像素的街道是 31 车道 + 2 中心线 + 31 车道，一辆车占一条道、对向留空。
 # 世界左右各留 64 像素画环路，让每条横街首尾相接，村内没有断头路。
-# 村心、森林、地块尺寸和房屋美术都不动；多出来的高度全用在街和路肩上。
+# 村心、其余住宅排、地块尺寸和房屋美术不动，世界北缘随森林向北延伸。
 CORE_W, CORE_H = 960, 660
 CORE_X, CORE_Y = 960, 330
 PLOT_W, PLOT_H = 320, 280
 ROAD_W, ROAD_VERGE = 64, 18
 RING_W = ROAD_W                                    # 环路与横街同宽
 ROW_PITCH = PLOT_H + ROAD_W + ROAD_VERGE * 2       # 380
-ROW_FIRST = 150
+ROW_FIRST = 90
 ROW_COUNT = 5
-ROW_CENTRES = tuple(ROW_FIRST + index * ROW_PITCH for index in range(ROW_COUNT))
-# 每条横街贴在本排房子门口，中间只留 18 像素路肩。
-STREET_Y = tuple(cy + PLOT_H // 2 + ROAD_VERGE for cy in ROW_CENTRES)
-WORLD_X, WORLD_Y = -RING_W, -520
+# 其余排从原有 y530 起延续，不能随最北排一起平移旧居民。
+ROW_CENTRES = (ROW_FIRST,) + tuple(530 + index * ROW_PITCH for index in range(ROW_COUNT - 1))
+WORLD_X, WORLD_Y = -RING_W, -580
 WORLD_W = 2880 + RING_W * 2                        # 3008
-WORLD_H = (STREET_Y[-1] + ROAD_W + 48) - WORLD_Y   # 2460
+WORLD_H = (ROW_CENTRES[-1] + PLOT_H // 2 + ROAD_VERGE + ROAD_W + 48) - WORLD_Y  # 2520，南缘仍为 y1940
 # 环路：西环贴世界左边界，东环贴村子右边界；两者与横街同宽，横街伸进环路形成路口。
 RING_X = (WORLD_X, WORLD_X + WORLD_W - RING_W)     # (-64, 2880)
 # 地块错落排布：村心左右各三列、上下各一排。
 # 星探去北部森林的林道夹在北侧两块地之间（x 1367..1393），所以北侧两块的 x 必须留在
-# 1197 / 1563；上排地块底边不超过 y300，才不会挡住 scout-journey.js 的返程路线。
+# 1197 / 1563；上排地块底边为 y230，至村心 y330 留出 18+64+18 的街道走廊。
 _R = ROW_CENTRES
 PLOT_SLOTS = [
     # 村心两侧最里一列（最近的邻居）
@@ -107,6 +107,14 @@ PLOT_SLOTS = [
     # 补足旧版容量；追加编号让已有居民保留自己的地块。
     (480, _R[0]), (2400, _R[4]),
 ]
+ROAD_NETWORK = build_road_network(PLOT_SLOTS, plot_size=(PLOT_W, PLOT_H),
+    core=(CORE_X, CORE_Y, CORE_W, CORE_H), world_origin=(WORLD_X, WORLD_Y),
+    world_size=(WORLD_W, WORLD_H), street_width=ROAD_W, verge=ROAD_VERGE,
+    pedestrian_accesses=(
+        dict(id="forest-path", doorstep=[1380, 227], point=[1380, 280], width=26),
+        dict(id="village-path", doorstep=[1420, 330], point=[1420, 280], width=64, surface="street"),
+    ))
+STREET_Y = tuple(street["top"] for street in ROAD_NETWORK["streets"])
 MAX_RESIDENTS = len(PLOT_SLOTS) + len(DEFAULTS)
 
 # 村心老地图里已经画好的两座建筑（按老地图 960×660 的比例记录命中区域）。
@@ -660,7 +668,7 @@ class TownApp:
         return dict(town=dict(name="星栖小镇", subtitle="让伙伴有自己的故事，让每一步成长有迹可循"),
                     map=dict(world=[WORLD_W, WORLD_H], origin=[WORLD_X, WORLD_Y], core=[CORE_X, CORE_Y, CORE_W, CORE_H],
                              plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS, road=dict(width=ROAD_W, verge=ROAD_VERGE),
-                             streets=list(STREET_Y), rings=list(RING_X)),
+                             streets=list(STREET_Y), rings=list(RING_X), road_network=ROAD_NETWORK),
                     provider=self.provider_status(), agents=agents, selected_agent_id=selected[0] if selected else "linghang",
                     selected_skin=selected_skin,
                     work_items=records[0], improvements=records[1], reports=self.reports(),

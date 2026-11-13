@@ -87,15 +87,15 @@
 .security-empty,.security-loading{border:1px dashed var(--line);padding:24px 18px;font-size:12px;line-height:1.9;color:var(--muted);text-align:center;margin:0;background:var(--surface)}
 .security-patrol{position:absolute;width:56px;height:70px;transform:translate(-50%,-100%);z-index:4;padding:0;pointer-events:auto;touch-action:manipulation}
 .security-patrol>img{width:49px;height:70px;object-fit:contain;image-rendering:pixelated;margin:0 auto;filter:var(--map-filter,none)}
-.security-patrol.is-car{width:48px;height:28px}
+.security-patrol.is-car{width:48px;height:28px;transform:translate(-50%,-50%)}
 .security-patrol.is-car>img{width:48px;height:28px}
+.security-patrol.is-car[data-direction="up"],.security-patrol.is-car[data-direction="down"],.security-patrol.is-car[data-direction="up"]>img,.security-patrol.is-car[data-direction="down"]>img{width:28px;height:48px}
 .security-patrol[data-direction="left"]>img{scale:-1 1}
 .security-patrol-name{position:absolute;top:100%;left:50%;white-space:nowrap;transform:translateX(-50%) scale(var(--map-ui-scale,1));transform-origin:center top;font-size:10px;line-height:1.6;color:var(--ink);background:var(--surface);padding:1px 4px;opacity:0;pointer-events:none}
 .security-patrol:hover .security-patrol-name,.security-patrol:focus-visible .security-patrol-name,.security-patrol.selected .security-patrol-name{opacity:1}
 .security-patrol.is-moving:not(.is-car)>img{animation:security-footsteps .45s steps(2,end) infinite}
-.security-patrol.is-car.is-moving>img{animation:security-wheels .35s steps(2,end) infinite}
+.security-patrol.is-car.is-moving>img{animation:none}
 @keyframes security-footsteps{50%{transform:translateY(-2px)}}
-@keyframes security-wheels{50%{transform:translateY(-1px)}}
 @media(prefers-reduced-motion:reduce){.security-patrol>img{animation:none!important}}
 [data-skin="starlight"] .security-station{background:#354a49}
 [data-skin="starlight"] .security-station:before{background:#5c6252;border-color:#454e45}

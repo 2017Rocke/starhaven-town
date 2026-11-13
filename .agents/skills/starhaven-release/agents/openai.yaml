@@ -1,0 +1,4 @@
+interface:
+  display_name: "星栖小镇发布"
+  short_description: "准备、执行和验证星栖小镇三平台发布，保留工作区与个人数据"
+  default_prompt: "使用 $starhaven-release，按当前星栖小镇仓库的发布手册和本次已授权范围完成发布准备、执行或验收。"
