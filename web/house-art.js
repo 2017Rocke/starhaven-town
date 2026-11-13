@@ -10,6 +10,8 @@
     observatory: { roof: ["#8fa89a", "#b1c1ab", "#6e8c80"], wall: ["#d0c9a6", "#e6ddbd", "#b2b397"], wood: ["#879780", "#b0b99b", "#657d70"] },
     architecture: { roof: ["#82967a", "#a4b08d", "#657b65"], wall: ["#c1c7a6", "#d9dfbd", "#a3af93"], wood: ["#899780", "#b1b99b", "#667c6b"] },
     workshop: { roof: ["#ad956e", "#c4ad83", "#89795b"], wall: ["#ceaa80", "#e2c49b", "#b38e6a"], wood: ["#9b805c", "#c1a479", "#79674f"] },
+    product: { roof: ["#8fa8b0", "#adc2c7", "#6d8790"], wall: ["#e2e6d6", "#f1f3ea", "#c6cdb9"], wood: ["#9b8f74", "#c3b899", "#786d55"] },
+    qa: { roof: ["#a86b5f", "#c08579", "#845349"], wall: ["#dfd8cc", "#f0eae0", "#c1b7a6"], wood: ["#8d7568", "#b49a8a", "#6b564b"] },
     farm: { roof: ["#b78967", "#cfa47e", "#936e53"], wall: ["#d8c69a", "#eee0b7", "#bba87e"], wood: ["#a28a60", "#c7ae7d", "#806e4e"] },
     music: { roof: ["#9b8e9e", "#b7a8b1", "#7d7587"], wall: ["#d2c4bc", "#e9dbcf", "#b6aaa6"], wood: ["#968578", "#bdab94", "#776f67"] },
     finance: { roof: ["#91a277", "#b1bc8d", "#74875f"], wall: ["#d0c49b", "#e7dcba", "#b3a984"], wood: ["#988b65", "#bfb085", "#787351"] },
@@ -71,7 +73,7 @@
   }
   function resolve(agent) {
     const style = Object.prototype.hasOwnProperty.call(STYLES, agent?.house?.style) ? agent.house.style : "cottage";
-    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden", police: "security", inspection: "audit" };
+    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden", police: "security", inspection: "audit", product: "roadmap", qa: "checklist" };
     return { style, p: STYLES[style], motif: agent?.house?.motif && agent.house.motif !== "none" ? agent.house.motif : defaults[style], variant: Math.abs(Number(agent?.house?.variant) || 0) % 4 };
   }
   function stoneBase(g, x, y, w) {
@@ -479,6 +481,8 @@
     observatory: { roof: 12, door: 140, left: 32, right: 288 },
     architecture: { roof: 20, door: 132, left: 28, right: 292 },
     workshop: { roof: 28, door: 132, left: 28, right: 292 },
+    product: { roof: 30, door: 132, left: 28, right: 292 },
+    qa: { roof: 22, door: 132, left: 28, right: 292 },
     farm: { roof: 36, door: 132, left: 28, right: 292 },
     music: { roof: 32, door: 132, left: 28, right: 292 },
     finance: { roof: 40, door: 132, left: 32, right: 288 },
@@ -573,6 +577,16 @@
       rect(g,cx-2,y+4,4,8,p.roof[2]);rect(g,cx-8,y+10,8,4,p.roof[2]);rect(g,cx+2,y+4,8,4,p.roof[2]);
     } else if(kind==="chicken") {
       rect(g,cx-10,y+8,16,6,"#b98c62");rect(g,cx+2,y+4,8,6,"#b98c62");rect(g,cx+6,y+2,4,2,"#bd806a");rect(g,cx+10,y+8,4,2,C.gold);
+    } else if(kind==="roadmap") {
+      // Three milestone bars on a route: the product plan reduced to its bones.
+      for(const [dy,w] of [[5,30],[9,22],[13,26]]) {
+        rect(g,cx-17,y+dy,w,3,p.roof[2]);rect(g,cx-20,y+dy-1,4,5,C.gold);
+      }
+    } else if(kind==="checklist") {
+      // Ticked and crossed rows: a verdict table, not decoration.
+      for(const dy of [5,9,13]) rect(g,cx-19,y+dy,4,4,p.roof[2]);
+      for(const dy of [5,9,13]) rect(g,cx-12,y+dy+1,24,2,p.wall[2]);
+      rect(g,cx+10,y+9,4,2,"#b8635a");rect(g,cx+13,y+12,2,2,"#b8635a");
     } else {
       rect(g,x+8,y+6,10,2,p.roof[2]);rect(g,x+24,y+6,width-32,2,p.wood[0]);rect(g,x+10,y+10,width-20,2,p.wood[1]);
     }
@@ -689,6 +703,40 @@
       awning(g,p,112);plaque(g,p,132,108,56,"tools");
       rect(g,84,84,36,20,p.wood[2]);rect(g,88,88,28,12,p.wall[2]);for(let x=92;x<112;x+=6)rect(g,x,88,2,12,p.wood[1]);
       if(motif==="music") {rect(g,248,160,16,12,p.wood[2]);rect(g,252,162,8,6,p.wall[1]);}
+    } else if(style==="product") {
+      // A light planning room: sticky notes on one side of the door, the
+      // roadmap board on the other, so the trade is readable from the street.
+      facade(g,p,44,108,232,180);
+      chimney(g,p,240,60,40);tiledRoof(g,p,36,40,248,15,6);
+      windowFrame(g,p,64,124,32,32,true);windowFrame(g,p,224,124,32,32,true);
+      awning(g,p,112);plaque(g,p,128,108,64,"roadmap");
+      rect(g,98,130,38,42,p.wood[2]);rect(g,100,132,34,38,p.wall[1]);
+      for(let r=0;r<3;r++)for(let c=0;c<2;c++) {
+        const col=["#e8d98a","#c9b7d8","#a9c9bd","#e8b39c","#c2d29a","#dcc59a"][r*2+c];
+        rect(g,102+c*17,136+r*11,15,9,col);rect(g,102+c*17,136+r*11,15,1,C.cream);
+        rect(g,107+c*17,135+r*11,2,2,C.gold);
+      }
+      rect(g,180,130,42,42,p.wood[2]);rect(g,182,132,38,38,C.cream);
+      for(const [dy,w,col] of [[142,30,p.roof[0]],[152,22,p.roof[2]],[162,34,p.roof[1]]]) rect(g,187,dy,w,4,col);
+      for(const dy of [142,152,162]) {rect(g,184,dy-1,4,6,C.gold);rect(g,190,dy+2,12,1,"#9aa79a");}
+    } else if(style==="qa") {
+      // A verdict room: a red defect board with crossed cases, and a specimen
+      // jar by the window — the one red roof in town, so it reads at a glance.
+      facade(g,p,44,108,232,180);
+      chimney(g,p,240,58,42);tiledRoof(g,p,36,40,248,15,6);
+      windowFrame(g,p,64,124,32,32,true);windowFrame(g,p,224,124,32,32,true);
+      awning(g,p,112);plaque(g,p,128,108,64,"checklist");
+      rect(g,98,130,38,42,p.wood[2]);rect(g,100,132,34,38,"#8a564c");
+      for(let r=0;r<3;r++)for(let c=0;c<3;c++) {
+        const x=103+c*10,y=136+r*11;
+        rect(g,x,y,8,8,C.cream);
+        rect(g,x+1,y+2,6,2,"#b8635a");rect(g,x+1,y+5,6,2,"#b8635a");
+        rect(g,x+1,y+2,2,5,"#b8635a");rect(g,x+5,y+2,2,5,"#b8635a");
+      }
+      rect(g,180,138,22,34,"#a8b5ad");rect(g,182,140,18,30,"#e6f0ea");
+      rect(g,186,152,9,7,"#6b564b");rect(g,187,150,7,3,"#845349");
+      rect(g,188,148,4,1,"#6b564b");rect(g,194,148,1,2,"#6b564b");
+      rect(g,180,134,22,5,p.wood[1]);rect(g,182,135,18,2,p.wood[0]);
     } else if(style==="farm") {
       facade(g,p,44,108,232,180,"timber");
       tiledRoof(g,p,32,44,256,15,6);
@@ -778,7 +826,7 @@
     }
     door(g,p,144,m.door);
     // Individual homes retain one small, reproducible change in furnishing.
-    if(!["observatory","angling","command","school","police","inspection"].includes(style))lantern(g,p,variant%2?192:120,m.door+4);
+    if(!["observatory","angling","command","school","police","inspection","product","qa"].includes(style))lantern(g,p,variant%2?192:120,m.door+4);
     return g;
   }
   function plantPot(g,p,x,y) {
@@ -851,6 +899,43 @@
       if(motif==="finance")screen(f,p,200,184,96,"finance");else blueprint(f,p,200,180,96,40);
       rect(f,228,228,48,12,C.cream);rect(f,232,230,36,2,"#85a39d");rect(f,240,226,4,16,p.wood[0]);
       crate(f,p,204,236,24);plantPot(f,p,272,224);
+    } else if(style==="product") {
+      // Left: a planning table with story cards. Right: a review easel with the
+      // route drawn on it, so the yard mirrors the board inside.
+      const table=group("planning-table");f.append(table);
+      rect(table,22,226,100,8,p.wood[0]);rect(table,22,226,100,2,p.wood[1]);
+      rect(table,26,234,4,22,p.wood[2]);rect(table,114,234,4,22,p.wood[2]);
+      for(let i=0;i<3;i++) {
+        rect(table,30+i*24,206,20,14,C.cream);rect(table,30+i*24,206,20,2,["#e8d98a","#a9c9bd","#c9b7d8"][i]);
+        rect(table,33+i*24,211,14,2,"#a9b29c");rect(table,33+i*24,215,9,2,"#c3c9b8");
+      }
+      rect(table,88,196,4,22,p.wood[1]);rect(table,84,192,12,4,C.gold);
+      const easel=group("roadmap-easel");f.append(easel);
+      rect(easel,204,196,4,40,p.wood[2]);rect(easel,272,196,4,40,p.wood[2]);
+      rect(easel,200,190,80,44,p.wood[1]);rect(easel,204,194,72,36,C.cream);
+      for(const [dy,w,col] of [[202,52,p.roof[0]],[212,38,p.roof[2]],[222,58,p.roof[1]]]) rect(easel,208,dy,w,4,col);
+      for(const dy of [202,212,222]) rect(easel,206,dy-1,4,6,C.gold);
+      crate(f,p,180,236,22);plantPot(f,p,288,224);
+    } else if(style==="qa") {
+      // Left: a bench where cases are replayed. Right: an instrument cart and
+      // the specimen shelf, deliberately sparse so the red roof leads.
+      const bench=group("case-bench");f.append(bench);
+      rect(bench,22,228,104,8,p.wood[0]);rect(bench,22,228,104,2,p.wood[1]);
+      rect(bench,26,236,4,20,p.wood[2]);rect(bench,118,236,4,20,p.wood[2]);
+      rect(bench,30,210,34,16,C.cream);
+      for(let r=0;r<3;r++) {
+        rect(bench,34,214+r*4,4,3,"#7c9a6c");rect(bench,40,215+r*4,20,2,"#b7bfae");
+      }
+      rect(bench,72,204,26,22,"#cfe0d8");rect(bench,74,206,22,18,"#e9f1ec");
+      rect(bench,80,214,8,6,"#6b564b");rect(bench,81,212,6,3,"#845349");
+      rect(bench,96,208,20,3,p.wood[1]);rect(bench,100,200,4,10,C.gold);rect(bench,106,196,8,8,C.glass);
+      const cart=group("instrument-cart");f.append(cart);
+      rect(cart,204,224,92,10,p.wood[0]);rect(cart,204,224,92,2,p.wood[1]);
+      rect(cart,208,234,4,22,p.wood[2]);rect(cart,288,234,4,22,p.wood[2]);
+      rect(cart,214,196,44,28,p.roof[2]);rect(cart,218,200,36,20,"#6c5a52");
+      for(let x=222;x<250;x+=8) rect(cart,x,204,4,12,"#c9645a");
+      rect(cart,264,204,24,20,C.cream);rect(cart,267,208,18,2,"#b8635a");rect(cart,267,213,13,2,"#b8635a");
+      crate(f,p,200,246,20);plantPot(f,p,286,226);
     } else if(style==="police") {
       const desk=group("checking-desk");f.append(desk);
       rect(desk,24,226,96,8,p.wood[0]);rect(desk,24,226,96,2,p.wood[1]);

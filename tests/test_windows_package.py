@@ -23,7 +23,7 @@ def build_module(name):
 
 
 class DesktopPayloadTest(unittest.TestCase):
-    def test_macos_and_windows_payloads_boot_with_eight_public_residents(self):
+    def test_macos_and_windows_payloads_boot_with_ten_public_residents(self):
         program = """
 import json
 from pathlib import Path
@@ -60,12 +60,12 @@ finally:
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 state = json.loads(completed.stdout)
                 residents = state["residents"]
-                self.assertEqual(len(residents), 8, residents)
+                self.assertEqual(len(residents), 10, residents)
                 self.assertTrue({"linghang", "scout", "resident-officer", "resident-inspector"}.issubset({row["id"] for row in residents}), residents)
-                self.assertTrue({"吉吉", "东日", "科德", "爬山佬"}.issubset({row["name"] for row in residents}), residents)
+                self.assertTrue({"吉吉", "东日", "科德", "爬山佬", "杨辉", "阿力哥"}.issubset({row["name"] for row in residents}), residents)
                 self.assertEqual(Path(state["journey_module"]), backend)
                 self.assertEqual(Path(state["roads_module"]), backend)
-                self.assertEqual(state["road_accesses"], 28)
+                self.assertEqual(state["road_accesses"], 31)
                 self.assertFalse(state["daily_enabled"])
                 self.assertTrue((backend / "defaults" / "residents.json").is_file())
                 self.assertTrue((backend / "web" / "forest-art.js").is_file())

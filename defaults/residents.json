@@ -29,7 +29,7 @@
       "bio": "日常养鸡，知道鸡的每个阶段需要什么，喜欢研究怎样把鸡养得又肥又健康。",
       "color": "#71896a",
       "avatar": "captain",
-      "plot_slot": 2
+      "plot_slot": 28
     },
     {
       "id": "resident-pashanlao",
@@ -60,6 +60,26 @@
       "color": "#678780",
       "avatar": "inspector",
       "plot_slot": 5
+    },
+    {
+      "id": "resident-yanghui",
+      "name": "杨辉",
+      "role": "产品经理",
+      "personality": "先问清场景再谈方案，习惯把模糊的想法拆成能验收的小步。说话直接，会当面说出需求里的问题。",
+      "bio": "住在吉吉左边的需求规划屋，负责梳理要做什么、为什么做和先做哪一件。把需求写成可验收的条目，画路线图、定优先级，也负责在开工前把不确定的地方问清楚。",
+      "color": "#8aa9bd",
+      "avatar": "planner",
+      "plot_slot": 10
+    },
+    {
+      "id": "resident-alige",
+      "name": "阿力哥",
+      "role": "测试工程师",
+      "personality": "细致、耐心、不留情面。喜欢复现问题再下结论，区分偶发和必现，不说“应该没问题”。",
+      "bio": "住在吉吉正下方的质检实验室，负责写用例、复现缺陷和回归验证。发现问题会记下可重复的步骤和实际结果，修好之后再跑一遍确认没有反弹。",
+      "color": "#a86b5f",
+      "avatar": "tester",
+      "plot_slot": 2
     }
   ]
 }

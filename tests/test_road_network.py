@@ -8,7 +8,8 @@ from town_roads import build_road_network
 
 
 # Approved layout: only the northern row moved sixty pixels from its saved
-# 1.12.0 position. Every other row and every slot retain their coordinates.
+# 1.12.0 position, and three plots were added under the village square so the
+# engineering team shares one street. Every other slot keeps its coordinates.
 PLOTS = [
     (800, 910), (800, 530), (800, 1290), (2080, 910), (2080, 530), (2080, 1290),
     (1197, 90), (1563, 90), (1202, 1670), (1558, 1670),
@@ -16,6 +17,7 @@ PLOTS = [
     (160, 910), (840, 90), (1920, 90), (840, 1670), (1920, 1670),
     (160, 530), (160, 1290), (2720, 910), (2720, 530), (2720, 1290),
     (480, 90), (2400, 1670),
+    (1120, 1290), (1440, 1290), (1760, 1290),
 ]
 WORLD = [-64, -580, 2944, 1940]
 VILLAGE = [960, 330, 1920, 990]
@@ -90,7 +92,7 @@ class RoadNetworkTest(unittest.TestCase):
 
     def test_every_door_has_an_actual_connected_node_on_the_drawn_road(self):
         accesses = self.network['accesses']
-        self.assertEqual(sorted(access['slot'] for access in accesses), list(range(28)))
+        self.assertEqual(sorted(access['slot'] for access in accesses), list(range(len(PLOTS))))
         neighbours = {identity: set() for identity in self.nodes}
         for edge in self.network['edges']:
             neighbours[edge['from']].add(edge['to'])

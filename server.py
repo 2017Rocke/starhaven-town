@@ -37,6 +37,7 @@ TOWN_TZ = dt.timezone(dt.timedelta(hours=8), name="Asia/Shanghai")
 SUPPORTED_AVATARS = frozenset({
     "captain", "scout", "maker", "gardener", "engineer", "musician",
     "architect", "rancher", "scholar", "artist", "angler", "resident", "officer", "inspector",
+    "planner", "tester",
 })
 LEGACY_SCOUT_ROLE = "开源项目研究员"
 LEGACY_SCOUT_BIO = "住在观察站的开源研究员，收集有用的项目、阅读固定版本源码、梳理实现原理与风险线索。背包里装着新点子和可追溯的证据。"
@@ -61,6 +62,29 @@ SECURITY_RESIDENTS = [{'id': 'resident-officer',
   'color': '#678780',
   'avatar': 'inspector',
   'plot_slot': 5}]
+
+# 研发小组：产品经理在吉吉左侧，测试工程师在吉吉正下方，三人共用一条街。
+# 科德为腾出槽位右移一格（旧的 slot 2 -> 新增的 slot 28），地块只是搬家。
+TEAM_RESIDENTS = [
+ {'id': 'resident-yanghui',
+  'name': '杨辉',
+  'role': '产品经理',
+  'personality': '先问清场景再谈方案，习惯把模糊的想法拆成能验收的小步。说话直接，会当面说出需求里的问题。',
+  'bio': '住在吉吉左边的需求规划屋，负责梳理要做什么、为什么做和先做哪一件。把需求写成可验收的条目，画路线图、定优先级，也负责在开工前把不确定的地方问清楚。',
+  'color': '#8aa9bd',
+  'avatar': 'planner',
+  'plot_slot': 10},
+ {'id': 'resident-alige',
+  'name': '阿力哥',
+  'role': '测试工程师',
+  'personality': '细致、耐心、不留情面。喜欢复现问题再下结论，区分偶发和必现，不说“应该没问题”。',
+  'bio': '住在吉吉正下方的质检实验室，负责写用例、复现缺陷和回归验证。发现问题会记下可重复的步骤和实际结果，修好之后再跑一遍确认没有反弹。',
+  'color': '#a86b5f',
+  'avatar': 'tester',
+  'plot_slot': 2},
+]
+# 科德原来的地块，腾出来给阿力哥；科德搬到新增的中间地块。
+TEAM_MOVED_RESIDENT = dict(id="resident-kede", frm=2, to=28)
 
 # 北部森林与最北排住宅上移 60 像素，为北街留出完整道路空间；地块编号保持不变。
 # 村心老地图保持 960×660 原尺寸居中——视口与村心同高，打开时看到的小镇与旧版一模一样。
@@ -106,6 +130,8 @@ PLOT_SLOTS = [
     (2720, _R[2]), (2720, _R[1]), (2720, _R[3]),
     # 补足旧版容量；追加编号让已有居民保留自己的地块。
     (480, _R[0]), (2400, _R[4]),
+    # 村心正下方那排补三块地：研发小组在这里落座，也给以后留位置。
+    (1120, _R[3]), (1440, _R[3]), (1760, _R[3]),
 ]
 ROAD_NETWORK = build_road_network(PLOT_SLOTS, plot_size=(PLOT_W, PLOT_H),
     core=(CORE_X, CORE_Y, CORE_W, CORE_H), world_origin=(WORLD_X, WORLD_Y),
@@ -131,7 +157,9 @@ HOUSE_STYLES = [
     ("inspection", "稽查署", [r"网安", r"稽查", r"密钥与外发"]),
     ("command", "指挥小屋", [r"主管", r"协调", r"指挥", r"统筹", r"管理", r"领导", r"队长"]),
     ("architecture", "设计塔楼", [r"架构", r"重构", r"底层", r"系统设计", r"蓝图"]),
-    ("workshop", "创造工坊", [r"开发", r"工程师", r"程序", r"代码", r"软件", r"编程", r"测试", r"迭代", r"前端", r"后端", r"产品"]),
+    ("product", "需求规划屋", [r"产品经理", r"产品", r"需求", r"路线图", r"原型", r"优先级", r"竞品"]),
+    ("qa", "质检实验室", [r"测试工程师", r"测试", r"质检", r"用例", r"缺陷", r"回归", r"验收"]),
+    ("workshop", "创造工坊", [r"开发", r"工程师", r"程序", r"代码", r"软件", r"编程", r"迭代", r"前端", r"后端"]),
     ("farm", "田园小院", [r"养鸡", r"鸡(?!汤)", r"农", r"种植", r"园艺", r"牧场", r"养殖", r"植物", r"菜园", r"果园"]),
     ("music", "旋律小屋", [r"音乐", r"歌", r"摇滚", r"乐队", r"乐器", r"节奏", r"舞台"]),
     ("finance", "行情小屋", [r"股票", r"金融", r"投资", r"交易", r"理财", r"基金", r"行情", r"证券"]),
@@ -160,6 +188,8 @@ STYLE_PALETTES = {
     "observatory": dict(wall="#bbad80", roof="#9cac91", trim="#7d8c74", accent="#8ba7a0", dark="#4e6376", light="#e5e6c9"),
     "architecture": dict(wall="#a7b594", roof="#7d8c74", trim="#5f7158", accent="#6d855e", dark="#42566a", light="#d5dfc7"),
     "workshop": dict(wall="#d4a078", roof="#ad9a71", trim="#8a6f4d", accent="#c98a5c", dark="#584430", light="#e5dcbe"),
+    "product": dict(wall="#e2e6d6", roof="#8fa8b0", trim="#6d8790", accent="#c9a24e", dark="#4b5b60", light="#f1f3ea"),
+    "qa": dict(wall="#dfd8cc", roof="#a86b5f", trim="#845349", accent="#c9645a", dark="#5c3a35", light="#f0eae0"),
     "farm": dict(wall="#d8c99e", roof="#bb8964", trim="#9e6b4e", accent="#c9a24e", dark="#5c3a2c", light="#eee0bd"),
     "music": dict(wall="#c9bcc8", roof="#a096a4", trim="#7f7480", accent="#c0a060", dark="#58407a", light="#e8e0e6"),
     "finance": dict(wall="#c6b88c", roof="#8ea66b", trim="#6d855e", accent="#bca079", dark="#3e5c41", light="#e5dcbe"),
@@ -193,7 +223,8 @@ def design_house(identity, name, role, personality, bio, color):
     role_scores = _house_scores(HOUSE_STYLES, ((1, role),))
     scores = role_scores or _house_scores(HOUSE_STYLES, ((2, personality), (1, bio)))
     # These specific roles must not be diluted by a generic “工程师” title.
-    specific_role = next((key for key in ("police", "inspection", "command", "architecture") if key in role_scores), None)
+    specific_role = next((key for key in (
+        "police", "inspection", "command", "architecture", "product", "qa") if key in role_scores), None)
     style = specific_role or (max(scores, key=scores.get) if scores else "cottage")
     interest_scores = _house_scores(HOUSE_MOTIFS, ((2, personality), (1, bio)))
     motif_scores = interest_scores or _house_scores(HOUSE_MOTIFS, ((1, role),))
@@ -415,6 +446,7 @@ class TownApp:
             db.execute("UPDATE agents SET bio=? WHERE id='scout' AND bio=?", (scout_defaults["bio"], LEGACY_SCOUT_BIO))
             self._backfill_plots(db)
             self._migrate_security_residents(db)
+            self._migrate_team_residents(db)
             db.execute("UPDATE messages SET status='failed' WHERE id IN (SELECT user_message_id FROM jobs WHERE status IN ('queued','running'))")
             db.execute("UPDATE jobs SET status='failed', error=?, updated_at=? WHERE status IN ('queued','running')", ("服务重新启动，上次对话未完成，请重新发送。", now()))
 
@@ -442,6 +474,52 @@ class TownApp:
             completed.add(item["id"])
         if completed or marker:
             db.execute("INSERT OR REPLACE INTO preferences(key,value) VALUES ('security_residents_v1',?)", (json.dumps(sorted(completed)),))
+
+    def _migrate_team_residents(self, db):
+        """把研发小组搬到一起：杨辉在吉吉左侧，阿力哥在吉吉正下方。
+
+        只调整地块，不动聊天记录、记忆和房屋设计。给阿力哥腾出槽位前，
+        先把科德右移到新增的中间地块；任何一步的目标地块已被占用就放弃
+        该步，退回最小空闲地块，绝不为腾位置而搬动别人。
+        """
+        marker = db.execute("SELECT value FROM preferences WHERE key='team_residents_v1'").fetchone()
+        try:
+            completed = set(json.loads(marker[0])) if marker else set()
+        except (ValueError, TypeError):
+            completed = set()
+        moved = TEAM_MOVED_RESIDENT
+        if moved["id"] not in completed:
+            row = db.execute("SELECT plot FROM agents WHERE id=?", (moved["id"],)).fetchone()
+            if row is not None:
+                slot = self._json_cell(row["plot"], {}).get("slot")
+                if slot == moved["frm"] and self._valid_slot(moved["to"]) and moved["to"] not in self._plot_taken(db):
+                    db.execute("UPDATE agents SET plot=? WHERE id=?",
+                               (json.dumps(dict(slot=moved["to"], pos=self._slot_pos(moved["to"]))), moved["id"]))
+            completed.add(moved["id"])
+        for item in TEAM_RESIDENTS:
+            if item["id"] in completed:
+                continue
+            if db.execute("SELECT 1 FROM agents WHERE id=?", (item["id"],)).fetchone():
+                completed.add(item["id"])
+                continue
+            taken = self._plot_taken(db)
+            if len(taken) >= len(PLOT_SLOTS):
+                continue
+            slot = item["plot_slot"] if self._valid_slot(item["plot_slot"]) and item["plot_slot"] not in taken else None
+            if slot is None:
+                slot = next((index for index in range(len(PLOT_SLOTS)) if index not in taken), None)
+            if slot is None:
+                continue
+            plot = dict(slot=slot, pos=self._slot_pos(slot))
+            house = design_house(item["id"], item["name"], item["role"], item["personality"], item["bio"], item["color"])
+            db.execute("INSERT INTO agents(id,name,role,personality,bio,color,avatar,home,greeting,suggestions,plot,house,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                tuple(item[key] for key in ("id", "name", "role", "personality", "bio", "color", "avatar")) +
+                (house["name"], "你好，我是%s。%s" % (item["name"], "有话直接说，我们一起把需求理清楚。" if item["avatar"] == "planner" else "发现问题就告诉我，我先复现一遍。"),
+                 json.dumps(["你现在在忙什么？", "这个功能怎么验收？", "有什么需要我注意的？"], ensure_ascii=False),
+                 json.dumps(plot), json.dumps(house, ensure_ascii=False), now()))
+            completed.add(item["id"])
+        if completed or marker:
+            db.execute("INSERT OR REPLACE INTO preferences(key,value) VALUES ('team_residents_v1',?)", (json.dumps(sorted(completed)),))
 
     def _ensure_resident_workspace(self, identity):
         if SecurityOffice.ensure_workspace(self.data_dir, identity):

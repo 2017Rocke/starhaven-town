@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
     PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
+    RING_X, ROAD_VERGE, ROAD_W, ROW_PITCH, SECURITY_RESIDENTS, STARTER_RESIDENTS_PATH, STREET_Y,
+    TEAM_MOVED_RESIDENT, TEAM_RESIDENTS,
     create_server, design_house, painted_house,
 )
 
@@ -57,7 +59,7 @@ class MapWorldTest(unittest.TestCase):
 
     def test_plots_fit_world_without_overlapping_homes_or_village(self):
         # Full legacy towns must fit, including their two original buildings.
-        self.assertEqual(MAX_RESIDENTS, 30)
+        self.assertEqual(MAX_RESIDENTS, 33)
         self.assertGreaterEqual(len(PLOT_SLOTS), 28)
         regions = [(CORE_X, CORE_Y, CORE_W, CORE_H)]
         for slot, (cx, cy) in enumerate(PLOT_SLOTS):
@@ -133,8 +135,14 @@ class MapWorldTest(unittest.TestCase):
 
         self.start()
         agents = self.agents()
-        self.assertEqual(len(agents), 30)
-        self.assertTrue(self.app.security_workspace()["resident_notice"])
+        self.assertEqual(len(agents), 33)
+        # 31 块地装得下 28 位老居民、两位警官和杨辉；只剩阿力哥没有空位。
+        # 这是容量用尽时的预期结果：先到先住，不挤走任何人。
+        self.assertEqual(self.app.security_workspace()["resident_notice"], "")
+        self.assertIn("resident-officer", agents)
+        self.assertIn("resident-inspector", agents)
+        self.assertIn("resident-yanghui", agents)
+        self.assertNotIn("resident-alige", agents)
         self.assertEqual(len(self.app.security_workspace()["offices"]), 2)
         slots = [agents["legacy-%s" % i]["plot"]["slot"] for i in range(28)]
         self.assertEqual(len(set(slots)), 28)
@@ -146,7 +154,12 @@ class MapWorldTest(unittest.TestCase):
             after_profiles = [tuple(row) for row in db.execute("SELECT id,name,role,personality,bio,color,avatar,greeting,suggestions,memories,created_at FROM agents WHERE id LIKE 'legacy-%' ORDER BY id")]
             self.assertEqual(after_profiles, before_profiles)
             self.assertEqual([tuple(row) for row in db.execute("SELECT * FROM messages")], before_messages)
-            self.assertEqual([tuple(row) for row in db.execute("SELECT * FROM preferences ORDER BY key")], before_preferences)
+            # 老设置一个都不能动；新居民补位只会追加两条一次性标记。
+            after_preferences = {row[0]: row[1] for row in db.execute("SELECT * FROM preferences")}
+            for key, value in before_preferences:
+                self.assertEqual(after_preferences[key], value)
+            self.assertIn("security_residents_v1", after_preferences)
+            self.assertIn("team_residents_v1", after_preferences)
             first_migration = [tuple(row) for row in db.execute("SELECT * FROM agents ORDER BY rowid")]
         self.start()
         with self.app.db() as db:
@@ -172,9 +185,22 @@ class MapWorldTest(unittest.TestCase):
                     "preferences": [dict(row) for row in db.execute("SELECT * FROM preferences ORDER BY key")],
                 }
 
-        with mock.patch("server.PLOT_SLOTS", legacy_plots):
+        # The starter file ships with the new plots, so pair it with the legacy
+        # layout: drop the two new colleagues and put 科德 back on its old slot.
+        starter = json.loads(STARTER_RESIDENTS_PATH.read_text(encoding="utf-8"))
+        starter["residents"] = [item for item in starter["residents"]
+                                if item["id"] not in ("resident-yanghui", "resident-alige")]
+        for item in starter["residents"]:
+            if item["id"] == TEAM_MOVED_RESIDENT["id"]:
+                item["plot_slot"] = TEAM_MOVED_RESIDENT["frm"]
+        starter_path = self.root / "legacy-residents.json"
+        starter_path.write_text(json.dumps(starter, ensure_ascii=False), encoding="utf-8")
+
+        with mock.patch("server.PLOT_SLOTS", legacy_plots), \
+             mock.patch("server.MAX_RESIDENTS", len(legacy_plots) + 2), \
+             mock.patch("server.STARTER_RESIDENTS_PATH", starter_path):
             self.start()
-            while len(self.agents()) < MAX_RESIDENTS:
+            while len(self.agents()) < len(legacy_plots) + 2:
                 self.app.add_agent({"name": "保留伙伴%s" % len(self.agents()), "bio": "升级前的自定义资料"})
             with self.app.db() as db:
                 for identity in self.agents():
@@ -185,6 +211,13 @@ class MapWorldTest(unittest.TestCase):
                         db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (
                             identity + "-" + role, identity, role, content, status, "2026-11-12T08:00:00+00:00"))
                 db.execute("INSERT OR REPLACE INTO preferences VALUES ('custom-map-note','keep-me')")
+                # This test is about the northern-row move only. Pre-complete both
+                # backfill markers so the new-resident migrations stay no-ops and
+                # cannot add rows that would legitimately change the agent table.
+                db.execute("INSERT OR REPLACE INTO preferences VALUES ('security_residents_v1',?)",
+                           (json.dumps(sorted(item["id"] for item in SECURITY_RESIDENTS)),))
+                db.execute("INSERT OR REPLACE INTO preferences VALUES ('team_residents_v1',?)",
+                           (json.dumps(sorted([TEAM_MOVED_RESIDENT["id"]] + [item["id"] for item in TEAM_RESIDENTS])),))
             before = saved_rows()
 
         self.start()
@@ -210,6 +243,55 @@ class MapWorldTest(unittest.TestCase):
         for _ in range(2):
             self.start()
             self.assertEqual(saved_rows(), after)
+
+    def test_existing_town_gains_the_engineering_team_at_their_preferred_plots(self):
+        # A town saved before the team existed: no 杨辉/阿力哥, 科德 still on
+        # slot 2, and no migration marker yet.
+        self.start()
+        with self.app.db() as db:
+            db.execute("DELETE FROM agents WHERE id IN ('resident-yanghui','resident-alige')")
+            db.execute("UPDATE agents SET plot=? WHERE id=?",
+                       (json.dumps(dict(slot=2, pos=[640, 1150])), TEAM_MOVED_RESIDENT["id"]))
+            db.execute("DELETE FROM preferences WHERE key='team_residents_v1'")
+
+        self.start()
+        by_id = self.agents()
+        self.assertEqual(by_id["resident-yanghui"]["plot"]["slot"], 10)
+        self.assertEqual(by_id["resident-alige"]["plot"]["slot"], 2)
+        self.assertEqual(by_id[TEAM_MOVED_RESIDENT["id"]]["plot"]["slot"], 28)
+        self.assertEqual(by_id["resident-jiji"]["plot"]["slot"], 0)
+        self.assertEqual(by_id["resident-yanghui"]["house"]["style"], "product")
+        self.assertEqual(by_id["resident-alige"]["house"]["style"], "qa")
+
+        # 迁移只跑一次：再启动不再改动任何地块。
+        settled = {key: value["plot"]["slot"] for key, value in by_id.items()}
+        self.start()
+        self.assertEqual({key: value["plot"]["slot"] for key, value in self.agents().items()}, settled)
+
+    def test_team_migration_leaves_the_old_slot_alone_when_the_new_one_is_taken(self):
+        # 目标地块被别人占了就不能硬搬：科德留在原地，别人的地块也不许被抢。
+        self.start()
+        with self.app.db() as db:
+            db.execute("DELETE FROM agents WHERE id IN ('resident-yanghui','resident-alige')")
+            db.execute("UPDATE agents SET plot=? WHERE id=?",
+                       (json.dumps(dict(slot=2, pos=[640, 1150])), TEAM_MOVED_RESIDENT["id"]))
+            db.execute("DELETE FROM preferences WHERE key='team_residents_v1'")
+        squatter = self.app.add_agent({"name": "占位伙伴", "bio": "先住进了中间那块地"})["agent"]
+        with self.app.db() as db:
+            db.execute("UPDATE agents SET plot=? WHERE id=?",
+                       (json.dumps(dict(slot=28, pos=[960, 1150])), squatter["id"]))
+
+        self.start()
+        by_id = self.agents()
+        self.assertEqual(by_id[TEAM_MOVED_RESIDENT["id"]]["plot"]["slot"], 2)
+        self.assertEqual(by_id[squatter["id"]]["plot"]["slot"], 28)
+        self.assertIn("resident-alige", by_id)
+        self.assertNotEqual(by_id["resident-alige"]["plot"]["slot"], 28)
+        self.assertNotEqual(by_id["resident-alige"]["plot"]["slot"], 2)
+        for agent in by_id.values():
+            slot = agent["plot"].get("slot")
+            if slot is not None:
+                self.assertTrue(0 <= slot < len(PLOT_SLOTS))
 
     def test_migration_repairs_invalid_and_duplicate_slots_preserving_valid_owners(self):
         self.start()
@@ -290,10 +372,11 @@ class MapWorldTest(unittest.TestCase):
                 self.assertEqual({key: value for key, value in house.items() if key != "name"},
                                  {key: value for key, value in renamed.items() if key != "name"})
 
-    def test_profession_remains_primary_and_all_ten_styles_are_available(self):
+    def test_profession_remains_primary_and_every_style_is_available(self):
         roles = {"主管": "command", "软件架构工程师": "architecture", "开发工程师": "workshop",
                  "园艺师": "farm", "音乐人": "music", "股票分析师": "finance",
-                 "教学老师": "school", "开源研究员": "observatory", "钓鱼佬": "angling"}
+                 "教学老师": "school", "开源研究员": "observatory", "钓鱼佬": "angling",
+                 "产品经理": "product", "测试工程师": "qa"}
         for role, style in roles.items():
             with self.subTest(role=role):
                 house = design_house("resident", "伙伴", role,
@@ -302,6 +385,18 @@ class MapWorldTest(unittest.TestCase):
                 self.assertEqual(house["style"], style)
         home = design_house("resident", "伙伴", "小镇伙伴", "友善", "喜欢散步", "#abcdef")
         self.assertEqual((home["style"], home["motif"]), ("cottage", "none"))
+
+    def test_product_and_qa_outrank_the_generic_engineer_style(self):
+        # "测试工程师" 同时命中 workshop 的「工程师」和 qa 的「测试」；职业优先表
+        # 必须让更具体的职业胜出，否则研发三人组会长得一模一样。
+        for role, style, label in (("产品经理", "product", "需求规划屋"),
+                                   ("测试工程师", "qa", "质检实验室"),
+                                   ("开发工程师", "workshop", "创造工坊")):
+            with self.subTest(role=role):
+                house = design_house("resident", "伙伴", role, "认真", "写代码", "#abcdef")
+                self.assertEqual((house["style"], house["label"]), (style, label))
+        # 只写「工程师」时仍应落在创造工坊，不能被新风格抢走。
+        self.assertEqual(design_house("x", "伙伴", "工程师", "认真", "写代码", "#abcdef")["style"], "workshop")
 
     def test_house_motif_updates_on_edit_and_migration_without_moving(self):
         self.start()
@@ -432,7 +527,7 @@ class MapWorldTest(unittest.TestCase):
         self.assertEqual(len(accepted), remaining)
         self.assertEqual(len({agent["plot"]["slot"] for agent in accepted}), remaining)
         self.assertEqual([result for result in results if isinstance(result, int)], [400] * (36 - remaining))
-        self.assertEqual(len(self.agents()), 30)
+        self.assertEqual(len(self.agents()), 33)
 
 
 if __name__ == "__main__":
