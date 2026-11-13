@@ -47,9 +47,9 @@ function safeSegments(route,segments,mode) {
     for(let x=-hx;x<=hx;x+=2) for(let y=-hy;y<=hy;y+=2) assert.ok(paved(route,[p[0]+x,p[1]+y],mode),`car body left paving at ${p}, heading ${s.direction}, body pixel ${x},${y}`);
   }
 }
-check("all 28 entrances plan a real two-street circuit with both ring roads",()=>{
+check("all 31 entrances plan a real two-street circuit with both ring roads",()=>{
   const started=performance.now();
-  assert.equal(map.slots.length,28);
+  assert.equal(map.slots.length,31);
   assert.ok(network.edges.every(edge=>edge.width===64&&edge.surface==="street"),"a narrow shared lane remains in the real road network");
   for(const mode of ["car","walk"]) for(let slot=0;slot<map.slots.length;slot++) {
     const route=nav.plan(makeAgent(slot,mode),map,layout,mode); plans.set(`${slot}:${mode}`,route);
@@ -83,7 +83,7 @@ check("full bodies, including short diagonal turns, remain on paving at all entr
     safeSegments(route,segments,mode);
   }
 });
-check("all 28 entrances, including the northern row, let cars drive out to the full-width street",()=>{
+check("all 31 entrances, including the northern row, let cars drive out to the full-width street",()=>{
   for(let slot=0;slot<map.slots.length;slot++) {
     const route=get(slot,"car"),access=network.accesses.find(a=>a.slot===slot),row=network.streets.find(s=>s.centre===access.point[1]);
     assert.equal(row.width,64);assert.equal(route.narrowAccess,false);

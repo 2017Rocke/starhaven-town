@@ -67,7 +67,7 @@ let checks = 0;
 function check(name, run) { run(); checks++; console.log(`PASS ${name}`); }
 
 // Read the actual map contract from Python, rather than maintaining a second
-// copy of the 28 plots or relying on renderer-labelled metadata as evidence.
+// copy of the plot list or relying on renderer-labelled metadata as evidence.
 const fixtureScript = "import json,server; print(json.dumps(dict(core=[server.CORE_X,server.CORE_Y,server.CORE_W,server.CORE_H],world=[server.WORLD_W,server.WORLD_H],origin=[server.WORLD_X,server.WORLD_Y],plot=[server.PLOT_W,server.PLOT_H],slots=server.PLOT_SLOTS,road_network=server.ROAD_NETWORK)))";
 const map = JSON.parse(execFileSync(process.env.PYTHON || "python3", ["-c", fixtureScript], { cwd: project, encoding: "utf8" }));
 const occupied = map.slots.map((_, slot) => slot);
@@ -80,7 +80,7 @@ const northernStreet = network.streets.reduce((north, street) => street.centre <
 const northernRoads = roads.filter(road => road.node.getAttribute("data-direction") === "horizontal" && road.bounds[1] === northernStreet.top);
 
 check("all actual streets are 64px wide and remain outside every home and the village", () => {
-  assert.equal(map.slots.length, 28);
+  assert.equal(map.slots.length, 31);
   assert.ok(network.edges.every(edge => edge.width === 64 && edge.surface === "street"), "a narrow shared lane remains in the actual map");
   assert.ok(roads.length > 0 && curbs.length > 0 && markings.length > 0);
   assert.ok(northernRoads.length > 0, "the northern street was not painted");
@@ -129,9 +129,9 @@ check("junction centre lines are clear and connecting arms have no curb barriers
     }
   }
 });
-check("all 28 occupied home entrances provide a real 32px path and an open curb", () => {
+check("all 31 occupied home entrances provide a real 32px path and an open curb", () => {
   const entrances = elements(tree).filter(item => item.node.getAttribute("data-slot") !== null && item.node.getAttribute("data-slot") !== "pedestrian");
-  assert.equal(entrances.length, 28);
+  assert.equal(entrances.length, 31);
   for (const access of network.accesses) {
     const [x, y] = access.doorstep, endY = access.point[1];
     const path = rectangles(entrances.find(item => Number(item.node.getAttribute("data-slot")) === access.slot).node);
