@@ -65,31 +65,47 @@ SECURITY_RESIDENTS = [{'id': 'resident-officer',
 # 村心老地图保持 960×660 原尺寸居中——视口与村心同高，打开时看到的小镇与旧版一模一样。
 # 住宅贴着村心生长：左右两片三层住宅区、上下两排临街小屋，按离村心远近分配，
 # 共 28 块地，加上村心两座老建筑（指挥所、观察站），保留旧版 30 人容量。
-WORLD_W, WORLD_H = 2880, 2200
-WORLD_X, WORLD_Y = 0, -520
+# 双向路网：行距 380 = 地块 280 + 走廊 100，走廊里是 18 路肩 + 64 街道 + 18 路肩。
+# 64 像素的街道是 31 车道 + 2 中心线 + 31 车道，一辆车占一条道、对向留空。
+# 世界左右各留 64 像素画环路，让每条横街首尾相接，村内没有断头路。
+# 村心、森林、地块尺寸和房屋美术都不动；多出来的高度全用在街和路肩上。
 CORE_W, CORE_H = 960, 660
 CORE_X, CORE_Y = 960, 330
 PLOT_W, PLOT_H = 320, 280
-# 地块错落排布：村心左右各三列、上下各一排。行距 340（地块 280 高，行间留 60 像素草地）。
+ROAD_W, ROAD_VERGE = 64, 18
+RING_W = ROAD_W                                    # 环路与横街同宽
+ROW_PITCH = PLOT_H + ROAD_W + ROAD_VERGE * 2       # 380
+ROW_FIRST = 150
+ROW_COUNT = 5
+ROW_CENTRES = tuple(ROW_FIRST + index * ROW_PITCH for index in range(ROW_COUNT))
+# 每条横街贴在本排房子门口，中间只留 18 像素路肩。
+STREET_Y = tuple(cy + PLOT_H // 2 + ROAD_VERGE for cy in ROW_CENTRES)
+WORLD_X, WORLD_Y = -RING_W, -520
+WORLD_W = 2880 + RING_W * 2                        # 3008
+WORLD_H = (STREET_Y[-1] + ROAD_W + 48) - WORLD_Y   # 2460
+# 环路：西环贴世界左边界，东环贴村子右边界；两者与横街同宽，横街伸进环路形成路口。
+RING_X = (WORLD_X, WORLD_X + WORLD_W - RING_W)     # (-64, 2880)
+# 地块错落排布：村心左右各三列、上下各一排。
 # 星探去北部森林的林道夹在北侧两块地之间（x 1367..1393），所以北侧两块的 x 必须留在
 # 1197 / 1563；上排地块底边不超过 y300，才不会挡住 scout-journey.js 的返程路线。
+_R = ROW_CENTRES
 PLOT_SLOTS = [
     # 村心两侧最里一列（最近的邻居）
-    (800, 830), (800, 490), (800, 1170),
-    (2080, 830), (2080, 490), (2080, 1170),
+    (800, _R[2]), (800, _R[1]), (800, _R[3]),
+    (2080, _R[2]), (2080, _R[1]), (2080, _R[3]),
     # 村心正上/正下的临街小屋
-    (1197, 150), (1563, 150),
-    (1202, 1510), (1558, 1510),
+    (1197, _R[0]), (1563, _R[0]),
+    (1202, _R[4]), (1558, _R[4]),
     # 中间一列
-    (480, 830), (480, 490), (480, 1170),
-    (2400, 830), (2400, 490), (2400, 1170),
+    (480, _R[2]), (480, _R[1]), (480, _R[3]),
+    (2400, _R[2]), (2400, _R[1]), (2400, _R[3]),
     # 最外一列与大路两端的房子
-    (160, 830), (840, 150), (1920, 150),
-    (840, 1510), (1920, 1510),
-    (160, 490), (160, 1170),
-    (2720, 830), (2720, 490), (2720, 1170),
+    (160, _R[2]), (840, _R[0]), (1920, _R[0]),
+    (840, _R[4]), (1920, _R[4]),
+    (160, _R[1]), (160, _R[3]),
+    (2720, _R[2]), (2720, _R[1]), (2720, _R[3]),
     # 补足旧版容量；追加编号让已有居民保留自己的地块。
-    (480, 150), (2400, 1510),
+    (480, _R[0]), (2400, _R[4]),
 ]
 MAX_RESIDENTS = len(PLOT_SLOTS) + len(DEFAULTS)
 
@@ -642,7 +658,9 @@ class TownApp:
         skins, default_skin = self.skin_choices()
         selected_skin = saved_skin[0] if saved_skin and saved_skin[0] in skins else default_skin
         return dict(town=dict(name="星栖小镇", subtitle="让伙伴有自己的故事，让每一步成长有迹可循"),
-                    map=dict(world=[WORLD_W, WORLD_H], origin=[WORLD_X, WORLD_Y], core=[CORE_X, CORE_Y, CORE_W, CORE_H], plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS),
+                    map=dict(world=[WORLD_W, WORLD_H], origin=[WORLD_X, WORLD_Y], core=[CORE_X, CORE_Y, CORE_W, CORE_H],
+                             plot=[PLOT_W, PLOT_H], slots=PLOT_SLOTS, road=dict(width=ROAD_W, verge=ROAD_VERGE),
+                             streets=list(STREET_Y), rings=list(RING_X)),
                     provider=self.provider_status(), agents=agents, selected_agent_id=selected[0] if selected else "linghang",
                     selected_skin=selected_skin,
                     work_items=records[0], improvements=records[1], reports=self.reports(),

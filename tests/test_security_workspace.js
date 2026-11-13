@@ -68,19 +68,29 @@ check("reduced motion keeps work truthful and actors stationary", () => {
   near(at(job, 4, true).point, route.home);
 });
 check("routes follow actual housing avenues and avoid the village centre", () => {
-  const map = { world: [2880, 2200], origin: [0, -520], core: [960, 330, 960, 660], plot: [320, 280], slots: [[800, 150], [800, 490], [2080, 490], [800, 830], [800, 1170], [1202, 1510]] };
+  const map = { world: [3008, 2460], origin: [-64, -520], core: [960, 330, 960, 660], plot: [320, 280],
+    road: { width: 64, verge: 18 }, streets: [308, 688, 1068, 1448, 1828], rings: [-64, 2880],
+    slots: [[800, 910], [800, 530], [2080, 530], [800, 1290], [1202, 1670]] };
   const layout = { resident: { x: 160, y: 162 } };
   for (const [cx, cy] of map.slots) {
     const agent = { plot: { pos: [cx - 160, cy - 140] } };
     const path = routeFor(agent, map, layout);
     assert.equal(path.approach[0][0], cx); assert.equal(path.approach[1][0], cx);
-    assert.equal(path.approach[1][1], cy === 1510 ? 1665 : cy + 170);
+    // The car drives down its own driveway and onto the middle of its own street.
+    const street = map.streets.find(top => top >= cy + 140);
+    assert.equal(path.approach[1][1], street + map.road.width / 2);
     for (const point of path.loop) {
       assert.equal(point[1], path.approach[1][1]);
-      assert.ok(point[0] >= 24 && point[0] <= 2856);
-      if (cy === 490) assert.ok(cx < 960 ? point[0] < 960 : point[0] > 1920);
+      assert.ok(point[0] >= 24 && point[0] <= 2984);
+      if (cy === 530) assert.ok(cx < 960 ? point[0] < 960 : point[0] > 1920);
     }
   }
+  // Without the published grid, the old corridor guess still picks a sane street.
+  const legacy = { world: [2880, 2200], origin: [0, -520], core: [960, 330, 960, 660], plot: [320, 280],
+    slots: [[800, 830], [800, 490]] };
+  const fallback = routeFor({ plot: { pos: [640, 690] } }, legacy, layout);
+  const bottom = 690 + 280, worldBottom = -520 + 2200;
+  assert.ok(fallback.approach[1][1] > bottom && fallback.approach[1][1] < worldBottom);
 });
 check("evidence display redacts common credential formats and limits output", () => {
   const inputs = ["Authorization: Bearer secret-token", "https://host.test/a?api_key=secret-token&ok=1", '{"password":"secret-token"}', "https://user:secret-token@host.test/a"];

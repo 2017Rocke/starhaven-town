@@ -847,65 +847,99 @@
     const [width, height] = map.world;
     const svg = svgNode("svg", { class: "world-bg", viewBox: `${mapOrigin(map)[0]} ${mapOrigin(map)[1]} ${width} ${height}`, width, height, "shape-rendering": "crispEdges", "aria-hidden": "true" });
     svg.style.top = `${mapOrigin(map)[1]}px`;
+    svg.style.left = `${mapOrigin(map)[0]}px`;
     svg.append(pixelRect(mapOrigin(map)[0], mapOrigin(map)[1], width, height, "#d6e4b8"));
     const rand = mulberry32(20261110);
     for (let i = 0; i < 70; i++) {
-      const x = Math.floor(rand() * width / 6) * 6, y = Math.floor(rand() * height / 6) * 6 + mapOrigin(map)[1];
+      const x = Math.floor(rand() * width / 6) * 6 + mapOrigin(map)[0], y = Math.floor(rand() * height / 6) * 6 + mapOrigin(map)[1];
       const patch = pixelPath("M0 12h18V0h42v6h24v12h12v24H78v12H36v-6H12V36H0Z", i % 2 ? "#cedfae" : "#d0e0b0");
       patch.setAttribute("transform", `translate(${x} ${y})`); svg.append(patch);
     }
     // Sparse three-pixel flecks match the density of town.svg, with no square lawn borders.
     const flecks = ["#c3d69f", "#bfcf9d", "#e3ebca", "#c9dca9"];
+    const [originX, originY] = mapOrigin(map);
     for (let i = 0; i < 2100; i++) {
-      const x = Math.floor(rand() * width / 3) * 3, y = Math.floor(rand() * height / 3) * 3 + mapOrigin(map)[1];
+      const x = Math.floor(rand() * width / 3) * 3 + originX, y = Math.floor(rand() * height / 3) * 3 + originY;
       if (x > map.core[0] && x < map.core[0] + map.core[2] && y > map.core[1] && y < map.core[1] + map.core[3]) continue;
       svg.append(pixelRect(x, y, 3, 3, flecks[i % 4]));
       if (i % 3 === 0) svg.append(pixelRect(x + 6, y + 3, 3, 3, flecks[i % 4]));
     }
-    const road = (x, y, w, h) => {
-      svg.append(pixelRect(x, y, w, h, "#dfd1a9"), pixelRect(x, y + h - 3, w, 3, "#d0c197"));
-      for (let step = 12; step < w - 12; step += 38) {
-        svg.append(pixelRect(x + step, y + (step % 3) * 3 + 3, 7, 2, "#cbbb91"), pixelRect(x + step + 14, y + h - 7, 11, 2, "#e9dfbd"));
+    // A street is a two-way road: pavement, kerbs, and a dashed centre line that
+    // separates the two lanes. Width comes from the server so the lane count and
+    // the patrol logic cannot disagree about where the road is.
+    const roadWidth = map.road?.width || 64, verge = map.road?.verge || 18;
+    const street = (x, y, w, h) => {
+      svg.append(pixelRect(x, y, w, h, "#dfd1a9"));
+      const vertical = h > w;
+      if (vertical) {
+        // Kerbs run down the two long sides; the centre line splits the lanes.
+        svg.append(pixelRect(x, y, 2, h, "#e7ddbb"), pixelRect(x + w - 2, y, 2, h, "#d0c197"));
+        const middle = x + Math.round(w / 2) - 1;
+        for (let step = 14; step < h - 14; step += 30) {
+          svg.append(pixelRect(middle, y + step, 2, Math.min(14, y + h - (y + step)), "#c9b98e"));
+        }
+        for (let step = 20; step < h - 20; step += 46) {
+          svg.append(pixelRect(x + 6, y + step, 2, 5, "#e9dfbd"), pixelRect(x + w - 10, y + step + 3, 2, 8, "#cbbb91"));
+        }
+      } else {
+        svg.append(pixelRect(x, y, w, 2, "#e7ddbb"), pixelRect(x, y + h - 2, w, 2, "#d0c197"));
+        const middle = y + Math.round(h / 2) - 1;
+        for (let step = 14; step < w - 14; step += 30) {
+          svg.append(pixelRect(x + step, middle, Math.min(14, x + w - (x + step)), 2, "#c9b98e"));
+        }
+        for (let step = 20; step < w - 20; step += 46) {
+          svg.append(pixelRect(x + step, y + 6, 5, 2, "#e9dfbd"), pixelRect(x + step + 3, y + h - 10, 8, 2, "#cbbb91"));
+        }
       }
     };
-    // Roads are derived from the plot rows: one avenue centred in each corridor
-    // between neighbouring rows. Deriving them means a change to PLOT_H or to
-    // the row pitch can never leave a road cutting through a house.
+    // Streets and ring roads are derived from the plot rows, so changing PLOT_H
+    // or the row pitch can never leave a road cutting through a house.
     const rowCentres = [...new Set((map.slots || []).map(([, cy]) => cy))].sort((a, b) => a - b);
-    const avenues = [];
-    for (let i = 0; i < rowCentres.length - 1; i++) {
-      const top = rowCentres[i] + map.plot[1] / 2;
-      const bottom = rowCentres[i + 1] - map.plot[1] / 2;
-      const room = bottom - top;
-      if (room < 14) continue;
-      const height = room >= 40 ? 20 : 14;
-      avenues.push({ top: Math.round(top + (room - height) / 2), bottom, height });
-      road(0, Math.round(top + (room - height) / 2), width, height);
+    const streets = map.streets?.length ? map.streets.map(y => ({ top: y, height: roadWidth }))
+      : rowCentres.map(cy => ({ top: Math.round(cy + map.plot[1] / 2 + verge), height: roadWidth }));
+    const core = map.core;
+    for (const { top, height } of streets) {
+      // A street that would pass behind the village square stops at its edge and
+      // resumes on the far side: through traffic is meant to use the ring roads,
+      // which keeps the square itself a pedestrian plaza.
+      const behindPlaza = top < core[1] + core[3] && top + height > core[1];
+      if (behindPlaza) {
+        street(0, top, core[0], height);
+        street(core[0] + core[2], top, width - core[0] - core[2], height);
+      } else {
+        street(0, top, width, height);
+      }
     }
-    // The southern row also has a street beneath its doors. Keep a margin
-    // inside the world instead of ending every final driveway on bare grass.
-    const lastBottom = rowCentres[rowCentres.length - 1] + map.plot[1] / 2;
-    const worldBottom = mapOrigin(map)[1] + map.world[1];
-    if (worldBottom - lastBottom >= 26) {
-      const top = Math.round(lastBottom + (worldBottom - lastBottom - 14) / 2);
-      avenues.push({ top, height: 14 });
-      road(0, top, width, 14);
-    }
+    // Ring roads close the grid at both edges, so every street meets every other
+    // and no patrol has to reverse on a dead end.
+    const rings = map.rings?.length ? map.rings : [0, width - roadWidth];
+    const topStreet = streets.length ? streets[0].top : 0;
+    const bottomStreet = streets.length ? streets[streets.length - 1].top + roadWidth : height;
+    for (const x of rings) street(x, topStreet, roadWidth, bottomStreet - topStreet);
     const occupied = new Set(ui.state.agents.filter(agent => Number.isInteger(agent.plot?.slot)).map(agent => agent.plot.slot));
     (map.slots || []).forEach(([cx, cy], index) => {
       if (!occupied.has(index)) svg.append(meadowPlot(index, cx - map.plot[0] / 2, cy - map.plot[1] / 2));
-      // Match the 24px doorstep exactly, extending through the avenue edge
-      // rather than leaving a fixed-length strip separated by a grass seam.
+      // Every row now has its own street, so every doorstep gets a paved driveway
+      // from the last stone step down to the kerb.
       const stub = Math.round(cy + map.plot[1] / 2);
-      const avenue = avenues.find(item => item.top >= stub && item.top - stub <= 40);
-      if (occupied.has(index) && avenue) {
-        const length = avenue.top - stub + avenue.height;
+      const own = streets.find(item => item.top >= stub && item.top - stub <= verge + 22);
+      if (occupied.has(index) && own) {
+        // The driveway stops at the near kerb: crossing the whole street would
+        // read as a road joining from the other side, which no house has.
+        const length = own.top - stub + 2;
         svg.append(pixelRect(cx - 12, stub, 24, length, "#dfd1a9"), pixelRect(cx - 9, stub, 18, length, "#e7ddbb"));
       }
     });
+    // Flowers line the verges beside each street instead of sitting on a lawn or
+    // a doorstep: the 18px strip between a plot's bottom edge and its kerb. They
+    // stay between the two ring roads so nothing is ever painted on tarmac.
+    const flowerLeft = rings[0] + roadWidth + 24;
+    const flowerRight = Math.min(rings[1], width) - 24;
     for (let i = 0; i < 38; i++) {
-      const x = 25 + Math.floor(rand() * (width - 50)), y = i % 2 ? 289 : 1047;
-      svg.append(pixelFlower(x, y, i % 2 ? "#dcc38a" : "#ddaf8a"));
+      const band = streets[i % Math.max(1, streets.length)];
+      if (!band || flowerRight <= flowerLeft) break;
+      const x = flowerLeft + Math.floor(rand() * (flowerRight - flowerLeft));
+      svg.append(pixelFlower(x, band.top - 13 + (i % 2) * 2, i % 2 ? "#dcc38a" : "#ddaf8a"));
     }
     if (mapOrigin(map)[1] < 0 && window.StarhavenForestArt) {
       const forest = svgNode("g", { class: "forest-park" });

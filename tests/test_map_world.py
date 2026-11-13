@@ -12,7 +12,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (
     APIError, CORE_H, CORE_W, CORE_X, CORE_Y, MAX_RESIDENTS,
-    PLOT_H, PLOT_SLOTS, PLOT_W, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
+    PLOT_H, PLOT_SLOTS, PLOT_W, RING_X, ROAD_VERGE, ROAD_W, ROW_PITCH,
+    STREET_Y, SUPPORTED_AVATARS, TownApp, WORLD_H, WORLD_W, WORLD_X, WORLD_Y,
     create_server, design_house, painted_house,
 )
 
@@ -71,6 +72,55 @@ class MapWorldTest(unittest.TestCase):
                     self.assertFalse(x < rx + rw and rx < x + PLOT_W
                                      and y < ry + rh and ry < y + PLOT_H)
             regions.append((x, y, PLOT_W, PLOT_H))
+
+    def test_every_plot_has_a_street_and_the_roads_stay_clear(self):
+        # A two-way street per row plus a ring road at each edge: every doorstep
+        # must open onto tarmac, no plot may cover a road, and the network must
+        # stay connected so a patrol can drive from any house to any other.
+        self.assertEqual(ROAD_VERGE * 2 + ROAD_W, ROW_PITCH - PLOT_H)
+        self.assertEqual(len(STREET_Y), len(set(cy for _, cy in PLOT_SLOTS)))
+        self.assertEqual(RING_X[0], WORLD_X)
+        self.assertEqual(RING_X[1] + ROAD_W, WORLD_X + WORLD_W)
+
+        roads = [(x, y, x + ROAD_W, y + ROAD_W)
+                 for x in RING_X for y in (STREET_Y[0], STREET_Y[-1] + ROAD_W)]
+        roads = []
+        for y in STREET_Y:
+            behind = y < CORE_Y + CORE_H and y + ROAD_W > CORE_Y
+            runs = [(0, CORE_X), (CORE_X + CORE_W, WORLD_W)] if behind else [(0, WORLD_W)]
+            roads += [(x1, y, x2, y + ROAD_W) for x1, x2 in runs]
+        roads += [(x, STREET_Y[0], x + ROAD_W, STREET_Y[-1] + ROAD_W) for x in RING_X]
+
+        def overlap(a, b):
+            return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+        for slot, (cx, cy) in enumerate(PLOT_SLOTS):
+            box = (cx - PLOT_W // 2, cy - PLOT_H // 2, cx + PLOT_W // 2, cy + PLOT_H // 2)
+            with self.subTest(slot=slot):
+                self.assertFalse([road for road in roads if overlap(box, road)])
+                # The driveway leaves the plot's bottom edge and meets a street.
+                driveway = [y for y in STREET_Y if 0 <= y - box[3] <= ROAD_VERGE + 22]
+                self.assertEqual(len(driveway), 1)
+
+        free = {(x, y) for x in range(WORLD_X, WORLD_X + WORLD_W, 4)
+                for y in range(WORLD_Y, WORLD_Y + WORLD_H, 4)
+                if any(r[0] <= x < r[2] and r[1] <= y < r[3] for r in roads)
+                and not any(cx - PLOT_W // 2 <= x < cx + PLOT_W // 2
+                            and cy - PLOT_H // 2 <= y < cy + PLOT_H // 2 for cx, cy in PLOT_SLOTS)}
+
+        def blocked(x, y):
+            return (CORE_X <= x < CORE_X + CORE_W and CORE_Y <= y < CORE_Y + CORE_H)
+
+        free = {cell for cell in free if not blocked(*cell)}
+        seen, queue = {min(free)}, [min(free)]
+        while queue:
+            x, y = queue.pop()
+            for step in ((4, 0), (-4, 0), (0, 4), (0, -4)):
+                neighbour = (x + step[0], y + step[1])
+                if neighbour in free and neighbour not in seen:
+                    seen.add(neighbour)
+                    queue.append(neighbour)
+        self.assertEqual(seen, free)
 
     def test_full_legacy_town_migrates_without_losing_profile_or_history(self):
         # Build the pre-map schema independently of the current implementation.
