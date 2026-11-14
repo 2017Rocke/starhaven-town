@@ -68,7 +68,7 @@ jobs:
       - run: uv python install 3.12
       - name: Check browser code and walking behavior
         run: |
-          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/road-art.js web/road-navigation.js web/security-workspace.js; do
+          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/road-art.js web/road-navigation.js web/security-workspace.js web/growth-workspace.js; do
             node --check "$script"
           done
           node tests/test_scout_journey.js
@@ -148,7 +148,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/road-art.js', 'web/road-navigation.js', 'web/security-workspace.js')) {
+          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/road-art.js', 'web/road-navigation.js', 'web/security-workspace.js', 'web/growth-workspace.js')) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

@@ -17,7 +17,7 @@ from runtime_check import verify_runtime
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "星栖小镇"
 BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py",
-                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "VERSION")
+                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "VERSION")
 
 
 def run(*args, **kwargs):

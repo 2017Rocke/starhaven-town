@@ -88,6 +88,7 @@ class SecurityOffice:
         self.workers = {}
         self.scheduler = None
         self.closed = False
+        self.access_policy = None
         self._initialize()
         if start_scheduler:
             self.scheduler = threading.Thread(target=self._schedule_loop, name="town-security-clock", daemon=True)
@@ -617,6 +618,11 @@ class SecurityOffice:
                     allowed, reason = False, "外发文本包含疑似明文凭据，已阻止发送；请移除敏感内容。"
         except (ValueError, TypeError):
             allowed, reason = False, "请求地址无效，已阻止发送。"
+        if allowed and self.access_policy is not None:
+            try:
+                self.access_policy.check_network(url, purpose)
+            except RuntimeError as exc:
+                allowed, reason = False, str(exc)
         identity = self._append("inspection", dict(kind="network_check", summary=reason, status="allowed" if allowed else "blocked",
             subject=clean((scheme + "://" + host) if host else "无效目的地", 250), purpose=clean(purpose, 60), agent_id=clean(agent_id, 90),
             method=method if method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD") else "OTHER", findings=[],

@@ -32,13 +32,13 @@ class StarterResidentsTest(unittest.TestCase):
         self.app = TownApp(self.root / "data", OfflineBridge(), self.root / "team", report_root=self.root / "reports")
         return self.app.state()
 
-    def test_fresh_town_has_ten_public_profiles_without_private_history(self):
+    def test_fresh_town_has_eleven_public_profiles_without_private_history(self):
         state = self.start()
         self.assertEqual([a["name"] for a in state["agents"]],
-                         ["领航", "星探", "吉吉", "东日", "科德", "爬山佬", "巡检警官", "网安稽查官", "杨辉", "阿力哥"])
+                         ["领航", "星探", "吉吉", "东日", "科德", "爬山佬", "巡检警官", "网安稽查官", "杨辉", "阿力哥", "成长官"])
         # 科德让出 slot 2 给阿力哥，自己搬到村心下方新增的 slot 28；
         # 杨辉在吉吉左侧的 slot 10。研发三人组共用一条街。
-        self.assertEqual([a["plot"]["slot"] for a in state["agents"][2:]], [0, 1, 28, 3, 4, 5, 10, 2])
+        self.assertEqual([a["plot"]["slot"] for a in state["agents"][2:]], [0, 1, 28, 3, 4, 5, 10, 2, 6])
         self.assertEqual([a["home"] for a in state["agents"]][2:5], ["吉吉的节拍工坊", "东日的蓝图研舍", "科德的暖羽鸡舍"])
         by_id = {a["id"]: a for a in state["agents"]}
         self.assertEqual(by_id["resident-yanghui"]["plot"]["slot"], 10)
@@ -63,7 +63,7 @@ class StarterResidentsTest(unittest.TestCase):
         with self.app.db() as db:
             db.execute("DELETE FROM agents WHERE id='resident-kede'")
         state = self.start()
-        self.assertEqual(len(state["agents"]), 9)
+        self.assertEqual(len(state["agents"]), 10)
         actual = next(a for a in state["agents"] if a["id"] == "resident-jiji")
         for field in ("name", "avatar", "memories", "plot", "house"):
             self.assertEqual(actual[field], updated[field])
@@ -95,7 +95,7 @@ class StarterResidentsTest(unittest.TestCase):
             self.assertEqual(con.execute("SELECT count(*) FROM agents").fetchone()[0], 0)
         finally:
             con.close()
-        self.assertEqual(len(self.start()["agents"]), 10)
+        self.assertEqual(len(self.start()["agents"]), 11)
 
 
 if __name__ == "__main__":

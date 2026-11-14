@@ -1,0 +1,25 @@
+#growth-office { margin-bottom: 28px; padding: 22px; border: 1px solid #d5dacc; border-radius: 16px; background: #f8faf4; }
+.growth-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.growth-toolbar > div:first-child { margin-right: auto; font-weight: 600; }
+.growth-button { border: 1px solid #b8c7ae; background: #fffdf7; color: #354d3e; padding: 8px 12px; border-radius: 8px; cursor: pointer; font: inherit; }
+.growth-button:hover { background: #eaf0e3; }
+.growth-button:disabled { opacity: .5; cursor: wait; }
+.growth-button.active, .growth-button.primary { background: #526d53; color: white; border-color: #526d53; }
+.growth-button:focus-visible, .growth-field input:focus-visible, .growth-field select:focus-visible, .growth-field textarea:focus-visible { outline: 3px solid #d7ab58; outline-offset: 2px; }
+.growth-note { color: #5d675d; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.growth-error { color: #a43a2e; line-height: 1.6; }
+.growth-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.growth-cards > .growth-note, .growth-cards > button { grid-column: 1 / -1; }
+.growth-card { padding: 16px; border: 1px solid #e0e2d5; border-radius: 12px; background: #fffef9; min-width: 0; }
+.growth-card h3 { margin: 0 0 8px; font-size: 16px; }
+.growth-card > button { margin: 4px 6px 0 0; }
+.growth-dialog { width: min(760px, calc(100vw - 32px)); max-height: 88vh; padding: 24px; overflow: auto; }
+.growth-form { display: grid; gap: 14px; }
+.growth-field { display: grid; gap: 7px; color: #46503e; font-size: 14px; }
+.growth-field input, .growth-field select, .growth-field textarea { width: 100%; box-sizing: border-box; border: 1px solid #bfc7b7; border-radius: 7px; padding: 10px; background: #fffef9; color: #243c2c; font: inherit; }
+.growth-field textarea { min-height: 120px; resize: vertical; }
+.growth-checks { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 12px; border: 1px solid #ccd3c3; border-radius: 8px; }
+.growth-checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.growth-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; background: #f2f3ec; border-radius: 8px; padding: 16px; line-height: 1.7; }
+#growth-chat-sources { font-size: 12px; padding: 0 10px; display: flex; gap: 8px; align-items: center; }
+@media (max-width: 800px) { #growth-office { padding: 12px; } .growth-dialog { padding: 16px; } }

@@ -129,12 +129,19 @@ def main():
     parser.add_argument("--stop-file", type=Path, help="Private desktop shutdown signal")
     parser.add_argument("--legacy-dir", type=Path)
     parser.add_argument("--migrate-only", action="store_true")
+    parser.add_argument("--owner-stdin", action="store_true", help="Read private native confirmation secret from inherited stdin")
     args = parser.parse_args()
     data_dir, source, reports = prepare(args.data_dir, args.legacy_dir)
     if args.migrate_only:
         print("原有数据已复制或目标数据已存在；原文件保持不变。")
         return
-    server = create_server(port=0, data_dir=data_dir, source_dir=source, report_root=reports, web_dir=BASE_DIR / "web")
+    owner_secret = None
+    if args.owner_stdin:
+        import re
+        owner_secret = sys.stdin.readline(130).strip()
+        if not re.fullmatch(r"[a-f0-9]{64}", owner_secret):
+            raise RuntimeError("原生确认通道初始化失败")
+    server = create_server(port=0, data_dir=data_dir, source_dir=source, report_root=reports, web_dir=BASE_DIR / "web", owner_secret=owner_secret)
     stopping = threading.Event()
 
     def shutdown(*unused):

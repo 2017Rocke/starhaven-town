@@ -60,7 +60,7 @@ finally:
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 state = json.loads(completed.stdout)
                 residents = state["residents"]
-                self.assertEqual(len(residents), 10, residents)
+                self.assertEqual(len(residents), 11, residents)
                 self.assertTrue({"linghang", "scout", "resident-officer", "resident-inspector"}.issubset({row["id"] for row in residents}), residents)
                 self.assertTrue({"吉吉", "东日", "科德", "爬山佬", "杨辉", "阿力哥"}.issubset({row["name"] for row in residents}), residents)
                 self.assertEqual(Path(state["journey_module"]), backend)

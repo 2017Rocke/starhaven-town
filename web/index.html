@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/scout-workspace.css">
   <link rel="stylesheet" href="/security-workspace.css">
+  <link rel="stylesheet" href="/growth-workspace.css">
   <script src="/house-art.js" defer></script>
   <script src="/scout-art.js" defer></script>
   <script src="/forest-art.js" defer></script>
@@ -17,6 +18,7 @@
   <script src="/road-art.js" defer></script>
   <script src="/road-navigation.js" defer></script>
   <script src="/security-workspace.js" defer></script>
+  <script src="/growth-workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -122,6 +124,7 @@
 
       <section id="view-growth" class="view content-view" role="tabpanel" aria-labelledby="tab-growth" hidden>
         <div class="page-heading"><p class="eyebrow">SMALL STEPS, REAL GROWTH</p><h1>一起成长的日子</h1><p>记住每一次协作，也认真对待每一点进步。</p></div>
+        <div id="growth-office" aria-label="成长署工作区"></div>
         <div id="growth-residents" class="growth-grid"></div>
         <div class="growth-explainer"><svg><use href="#i-leaf"/></svg><div><strong>能力要有证据，陪伴也值得记录。</strong><p>工作验收与验证通过的改进，记录伙伴的真实能力成长。聊天次数和相伴天数，只记录你们的互动。</p></div></div>
         <div class="section-heading"><h2>能力成长记录</h2><span>每一步，都踏实</span></div>
@@ -140,6 +143,7 @@
       <div class="chat-alert" id="chat-alert" role="alert" hidden></div>
       <div class="suggestions" id="suggestions" aria-label="聊天灵感"></div>
       <form class="chat-form" id="chat-form">
+        <div id="growth-chat-sources" aria-live="polite"></div>
         <label class="sr-only" for="chat-input">发给当前伙伴的消息</label>
         <textarea id="chat-input" rows="2" maxlength="8000" placeholder="告诉伙伴，你在想什么…" disabled></textarea>
         <div class="composer-bottom"><span class="composer-hint">Enter 发送 · Shift + Enter 换行</span><button class="send-button" id="send-message" type="submit" aria-label="发送消息" disabled><svg><use href="#i-send"/></svg></button><button class="stop-button" id="stop-message" type="button" hidden><svg><use href="#i-stop"/></svg>停止</button></div>

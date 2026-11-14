@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -224,6 +227,8 @@ internal sealed class TownWindow : Form
     private readonly ChildProcessJob childJob = new ChildProcessJob();
     private string readyDirectory;
     private Uri origin;
+    private string ownerSecret;
+    private bool confirmingOwner;
 
     internal TownWindow()
     {
@@ -255,12 +260,18 @@ internal sealed class TownWindow : Form
             readyDirectory = Program.CreateRunDirectory();
             string ready = Path.Combine(readyDirectory, "ready.json");
             var start = new ProcessStartInfo(python, "-I -X utf8 -B " + Program.Quote(runner) + " --data-dir " + Program.Quote(Program.WorkingDataDirectory) + " --ready-file " + Program.Quote(ready) + " --parent-pid " + Process.GetCurrentProcess().Id + " --stop-file " + Program.Quote(Path.Combine(readyDirectory, "stop.request")));
+            start.Arguments += " --owner-stdin";
+            start.RedirectStandardInput = true;
             start.WorkingDirectory = backendDir; start.UseShellExecute = false; start.CreateNoWindow = true;
             start.RedirectStandardError = true; start.RedirectStandardOutput = true;
             backend = new Process(); backend.StartInfo = start;
             backend.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (!String.IsNullOrWhiteSpace(e.Data)) Program.Log(e.Data); };
             backend.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (!String.IsNullOrWhiteSpace(e.Data)) Program.Log(e.Data); };
             backend.Start(); childJob.Attach(backend); backend.BeginErrorReadLine(); backend.BeginOutputReadLine();
+            var secretBytes = new byte[32];
+            using (var random = RandomNumberGenerator.Create()) { random.GetBytes(secretBytes); }
+            ownerSecret = BitConverter.ToString(secretBytes).Replace("-", "").ToLowerInvariant();
+            backend.StandardInput.WriteLine(ownerSecret); backend.StandardInput.Close();
             DateTime deadline = DateTime.UtcNow.AddSeconds(45); int port = 0;
             while (DateTime.UtcNow < deadline)
             {
@@ -276,6 +287,7 @@ internal sealed class TownWindow : Form
             if (port < 1 || port > 65535) throw new TimeoutException("小镇服务启动超时。");
             origin = new Uri("http://127.0.0.1:" + port + "/");
             await InitBrowser(Program.BrowserOptions());
+            browser.CoreWebView2.WebMessageReceived += ConfirmOwnerIntent;
             if (Program.SelfTestFile != null)
                 await browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__starhavenTestErrors=[]; window.addEventListener('error',function(e){window.__starhavenTestErrors.push(e.message||'resource error')}); window.addEventListener('unhandledrejection',function(e){window.__starhavenTestErrors.push(String(e.reason))});");
             browser.CoreWebView2.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
@@ -341,6 +353,70 @@ internal sealed class TownWindow : Form
             Program.BundledRuntimeFolder, Path.Combine(Program.WorkingDataDirectory, "WebView2"), options);
         closing.Token.ThrowIfCancellationRequested();
         await browser.EnsureCoreWebView2Async(environment);
+    }
+
+    private Dictionary<string, object> OwnerRequest(string path, object body = null)
+    {
+        var serializer = new JavaScriptSerializer { MaxJsonLength = 1000000 };
+        var request = (HttpWebRequest)WebRequest.Create(new Uri(origin, path));
+        request.Proxy = null; request.AllowAutoRedirect = false; request.Timeout = 10000;
+        request.Headers["X-Town-Owner"] = ownerSecret;
+        request.Headers["X-Town-Client"] = "pixel-town";
+        if (body != null)
+        {
+            request.Method = "POST"; request.ContentType = "application/json";
+            byte[] bytes = Encoding.UTF8.GetBytes(serializer.Serialize(body));
+            request.ContentLength = bytes.Length;
+            using (var stream = request.GetRequestStream()) { stream.Write(bytes, 0, bytes.Length); }
+        }
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+        {
+            if (response.StatusCode != HttpStatusCode.OK) throw new InvalidOperationException("原生确认请求失败");
+            return serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
+        }
+    }
+
+    private async void ConfirmOwnerIntent(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        Uri source;
+        if (confirmingOwner || origin == null || !Uri.TryCreate(e.Source, UriKind.Absolute, out source) ||
+            source.GetLeftPart(UriPartial.Authority) != origin.GetLeftPart(UriPartial.Authority) ||
+            (source.AbsolutePath != "/" && source.AbsolutePath != "/index.html")) return;
+        string identity;
+        try
+        {
+            var message = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
+            if (!message.ContainsKey("type") || Convert.ToString(message["type"]) != "owner-intent") return;
+            identity = Convert.ToString(message["id"]);
+            if (!Regex.IsMatch(identity, "\\A[a-f0-9]{32}\\z")) return;
+        }
+        catch { return; }
+        confirmingOwner = true;
+        try
+        {
+            var preview = await Task.Run(() => OwnerRequest("/internal/owner/intents/" + identity));
+            if (closing.IsCancellationRequested) return;
+            bool approved;
+            using (var dialog = new Form())
+            {
+                dialog.Text = "原生确认 · " + Convert.ToString(preview["title"]);
+                dialog.Size = new Size(780, 600); dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.MinimizeBox = false; dialog.MaximizeBox = false;
+                var detail = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, Dock = DockStyle.Fill,
+                    Text = "以下内容由本地服务读取。确认将授权所列动作；取消不会改变权限。\r\n\r\n" + Convert.ToString(preview["summary"]), WordWrap = true };
+                var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 48, FlowDirection = FlowDirection.RightToLeft };
+                var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Width = 110 };
+                var accept = new Button { Text = "确认授权", DialogResult = DialogResult.OK, Width = 110 };
+                buttons.Controls.Add(cancel); buttons.Controls.Add(accept); dialog.CancelButton = cancel;
+                dialog.Controls.Add(detail); dialog.Controls.Add(buttons);
+                approved = dialog.ShowDialog(this) == DialogResult.OK;
+            }
+            await Task.Run(() => OwnerRequest("/internal/owner/confirm", new { id = identity, digest = Convert.ToString(preview["digest"]), approved = approved }));
+            if (!closing.IsCancellationRequested) browser.CoreWebView2.PostWebMessageAsJson("{\"type\":\"owner-complete\"}");
+        }
+        catch { if (!closing.IsCancellationRequested) MessageBox.Show(this, "确认未完成：请求可能已过期或内容已变化，请刷新后重试。", "星栖小镇"); }
+        finally { confirmingOwner = false; }
     }
     protected override void OnFormClosed(FormClosedEventArgs e)
     {

@@ -2,9 +2,10 @@ import AppKit
 import WebKit
 import Foundation
 import Darwin
+import Security
 
 /// Native lifetime owner for the bundled local service. User data never lives in the app bundle.
-final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
+final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, URLSessionTaskDelegate {
     private let appName = "星栖小镇"
     private let bundleID = "cn.starhaven.town"
     private let fileManager = FileManager.default
@@ -21,6 +22,8 @@ final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
     private var readyTimer: Timer?
     private var attemptID = UUID()
     private var origin: URL?
+    private var ownerSecret = ""
+    private var confirmingOwner = false
     private var quitting = false
     private var reportWindows: [NSWindow] = []
 
@@ -116,6 +119,7 @@ final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         mainWindow.contentView = container
 
         let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(self, name: "townOwner")
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -182,6 +186,79 @@ final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+
+    private func ownerRequest(_ path: String, body: [String: Any]? = nil, completion: @escaping ([String: Any]?) -> Void) {
+        guard let origin = origin, let url = URL(string: path, relativeTo: origin) else { completion(nil); return }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.setValue(ownerSecret, forHTTPHeaderField: "X-Town-Owner")
+        request.setValue("pixel-town", forHTTPHeaderField: "X-Town-Client")
+        if let body = body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = ["HTTPEnable": 0, "HTTPSEnable": 0, "ProxyAutoConfigEnable": 0]
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        session.dataTask(with: request) { data, response, _ in
+            var result: [String: Any]?
+            if let data = data, data.count <= 1000000, (response as? HTTPURLResponse)?.statusCode == 200 {
+                result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            }
+            session.finishTasksAndInvalidate()
+            DispatchQueue.main.async { completion(result) }
+        }.resume()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard !confirmingOwner, !quitting, message.name == "townOwner", message.frameInfo.isMainFrame,
+              message.webView === webView, let source = message.frameInfo.request.url, let origin = origin,
+              source.scheme == origin.scheme, source.host == origin.host, source.port == origin.port,
+              (source.path == "/" || source.path == "/index.html" || source.path.isEmpty),
+              let body = message.body as? [String: Any], body["type"] as? String == "owner-intent",
+              let identity = body["id"] as? String,
+              identity.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else { return }
+        confirmingOwner = true
+        ownerRequest("/internal/owner/intents/" + identity) { [weak self] preview in
+            guard let self = self else { return }
+            guard !self.quitting, let preview = preview, let fingerprint = preview["digest"] as? String,
+                  let summary = preview["summary"] as? String else { self.ownerFailed(); return }
+            let alert = NSAlert()
+            alert.messageText = "原生确认 · " + (preview["title"] as? String ?? "小镇授权")
+            alert.informativeText = "以下内容由本地服务读取。确认将授权所列动作；取消不会改变权限。"
+            alert.addButton(withTitle: "取消")
+            alert.addButton(withTitle: "确认授权")
+            let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 620, height: 380))
+            scroll.hasVerticalScroller = true
+            let detail = NSTextView(frame: scroll.bounds)
+            detail.isEditable = false
+            detail.isSelectable = true
+            detail.string = summary
+            detail.autoresizingMask = [.width]
+            scroll.documentView = detail
+            alert.accessoryView = scroll
+            let approved = alert.runModal() == .alertSecondButtonReturn
+            self.ownerRequest("/internal/owner/confirm", body: ["id": identity, "digest": fingerprint, "approved": approved]) { result in
+                if result == nil { self.ownerFailed(); return }
+                self.confirmingOwner = false
+                self.webView.evaluateJavaScript("window.dispatchEvent(new Event('town-owner-complete'))", completionHandler: nil)
+            }
+        }
+    }
+
+    private func ownerFailed() {
+        confirmingOwner = false
+        guard !quitting else { return }
+        let alert = NSAlert()
+        alert.messageText = "确认未完成"
+        alert.informativeText = "请求可能已过期或内容已变化，请刷新后重试。"
+        alert.runModal()
+    }
+
     private func startBackend() {
         guard !quitting else { return }
         attemptID = UUID()
@@ -222,14 +299,20 @@ final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             process.executableURL = executable
             process.arguments = ["--data-dir", dataDirectory.path,
                                  "--ready-file", readyURL.path,
-                                 "--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
+                                 "--parent-pid", String(ProcessInfo.processInfo.processIdentifier), "--owner-stdin"]
             process.currentDirectoryURL = dataDirectory
             var environment = ProcessInfo.processInfo.environment
             environment["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (environment["PATH"] ?? "")
             environment.removeValue(forKey: "PYTHONHOME")
             environment.removeValue(forKey: "PYTHONPATH")
             process.environment = environment
-            process.standardInput = FileHandle.nullDevice
+            let ownerPipe = Pipe()
+            process.standardInput = ownerPipe
+            var secretBytes = [UInt8](repeating: 0, count: 32)
+            guard SecRandomCopyBytes(kSecRandomDefault, secretBytes.count, &secretBytes) == errSecSuccess else {
+                throw NSError(domain: bundleID, code: 9, userInfo: [NSLocalizedDescriptionKey: "原生确认通道初始化失败"])
+            }
+            ownerSecret = secretBytes.map { String(format: "%02x", $0) }.joined()
             process.standardOutput = handle
             process.standardError = handle
             process.terminationHandler = { [weak self] stopped in
@@ -241,6 +324,8 @@ final class TownAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             }
             backend = process
             try process.run()
+            ownerPipe.fileHandleForWriting.write(Data((ownerSecret + "\n").utf8))
+            ownerPipe.fileHandleForWriting.closeFile()
             let deadline = Date().addingTimeInterval(60)
             readyTimer?.invalidate()
             readyTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self, weak process] timer in

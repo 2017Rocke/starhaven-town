@@ -356,8 +356,14 @@ class HTTPTest(TownFixture):
         self.assertEqual(self.request("GET", "/reports/2026-11-09/secret.json")[0], 403)
         for path in ("/../source/config.json", "/%2e%2e/source/config.json", "/reports/2026-11-09/%2e%2e/report.html", "/%5c../config.json", "/%00"):
             self.assertEqual(self.request("GET", path)[0], 403, path)
-        (self.web / "leak.txt").symlink_to(self.source / "config.json")
-        self.assertEqual(self.request("GET", "/leak.txt")[0], 403)
+        with self.subTest("symlink traversal"):
+            try:
+                (self.web / "leak.txt").symlink_to(self.source / "config.json")
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows account lacks symbolic-link privilege")
+                raise
+            self.assertEqual(self.request("GET", "/leak.txt")[0], 403)
         status, headers, body = self.request("GET", "/reports/2026-11-09/report.html")
         self.assertEqual(status, 200)
         self.assertIn("sandbox;", headers["Content-Security-Policy"])

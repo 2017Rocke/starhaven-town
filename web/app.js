@@ -350,6 +350,7 @@
       if (ui.state && ui.selected !== "scout" && ui.state.agents.some(agent => agent.id === "scout")) selectAgent("scout");
     }
     const securityAgent = window.StarhavenSecurityWorkspace?.agentForOffice(name);
+    if (name === "growth") window.StarhavenGrowthWorkspace?.open();
     if (securityAgent) {
       window.StarhavenSecurityWorkspace.open(name);
       if (ui.state?.agents.some(agent => agent.id === securityAgent) && ui.selected !== securityAgent) selectAgent(securityAgent);
@@ -449,6 +450,7 @@
   }
 
   function renderProfile() {
+    window.StarhavenGrowthWorkspace?.renderAttachments();
     const agent = currentAgent();
     if (!agent) return;
     const container = $("#selected-profile");
@@ -472,6 +474,7 @@
     home.addEventListener("click", () => {
       const office = window.StarhavenSecurityWorkspace?.officeForAgent(agent.id);
       if (office) showView(office);
+      else if (agent.id === "resident-growth") showView("growth");
       else if (agent.id === "scout") showView("scout");
       else { showView("town"); revealResident(agent.id); }
     });
@@ -643,6 +646,7 @@
     hit.addEventListener("click", () => {
       if (office) { selectAgent(agent.id); showView(office); }
       else if (agent.id === "scout") { selectAgent(agent.id); showView("scout"); }
+      else if (agent.id === "resident-growth") { selectAgent(agent.id); showView("growth"); }
       else selectAgent(agent.id, true);
     });
     plot.append(hit);
@@ -1113,6 +1117,11 @@
       meta.append(time);
     }
     wrapper.append(meta, el("div", "message-content", message.content || ""));
+    if (!user && message.id && message.status === "complete") {
+      const save = el("button", "text-button", "保存成果"); save.type = "button";
+      save.addEventListener("click", () => window.StarhavenGrowthWorkspace?.saveReply(message));
+      wrapper.append(save);
+    }
     const labels = { failed: "这条消息未获得回复", cancelled: "这次回复已停止", pending: "正在等待回复" };
     if (user && labels[message.status]) {
       const status = el("div", "message-status", labels[message.status]);
@@ -1167,7 +1176,9 @@
     showChatError(id, null);
     updateComposer();
     try {
-      const result = await api("/api/chat", { method: "POST", body: { agent_id: id, message: content, request_id: request.id } });
+      if (!request.sources) request.sources = window.StarhavenGrowthWorkspace?.sources(id) || [];
+      const result = await api("/api/chat", { method: "POST", body: { agent_id: id, message: content, request_id: request.id, sources: request.sources } });
+      window.StarhavenGrowthWorkspace?.clearSources(id);
       ui.requests.delete(id);
       if (!retry && getDraft(id).trim() === content) {
         saveDraft(id, "");
@@ -1465,6 +1476,7 @@
   const showSettingsInitially = location.hash === "#settings";
   window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, centerMap, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   window.StarhavenSecurityWorkspace?.init({ api, el, toast, showView, centerMap, selectAgent, getAvatar: chosenAvatar, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
+  window.StarhavenGrowthWorkspace?.init({ api, el, toast, showView, selectAgent, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
   initMapPan();
   loadSkins();

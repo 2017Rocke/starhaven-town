@@ -68,12 +68,28 @@ class ProviderBridge:
         self.socket_timeout = 20
         self._opener_factory = opener_factory
         self._security = None
+        self._budget = None
         self._config_error = False
         self._config = self._load()
 
     def set_security_office(self, security):
         """Attach the local audit service; it never receives authentication headers."""
         self._security = security
+
+    def set_budget(self, budget):
+        self._budget = budget
+
+    @staticmethod
+    def budget_capability(config):
+        # Explicit text-only profile: byte-level BPE input is bounded by UTF-8
+        # bytes plus chat framing; these non-reasoning models honor max_tokens.
+        # An arbitrary compatible server/model name does not inherit this claim.
+        supported = config.get("mode", "api") == "api" and config.get("base_url") == "https://api.openai.com/v1" and config.get("model") in {
+            "gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-2024-11-20",
+        }
+        return dict(profile="openai-text-bpe-v1" if supported else "unverified-compatible", enforce_supported=supported,
+                    input_bound="complete-request-utf8-bytes+512" if supported else None,
+                    output_parameter="max_tokens" if supported else None)
 
     def _load(self):
         fallback = {"mode": "codex" if self.codex.executable else "api", "base_url": "", "model": ""}
@@ -117,6 +133,7 @@ class ProviderBridge:
     def settings(self):
         with self._lock:
             result = dict(self._config)
+            result["budget_capability"] = self.budget_capability(self._config)
             try:
                 result["has_api_key"] = bool(self.credentials.get(result["base_url"]))
                 key_error = ""
@@ -198,11 +215,14 @@ class ProviderBridge:
         try:
             payload = json.dumps({
                 "model": config["model"], "stream": False,
+                **({"max_tokens": self._budget.config()["max_output_tokens"]} if self._budget else {}),
                 "messages": [
                     {"role": "system", "content": "你是星栖小镇中的中文角色对话助手。仅生成文本回复，没有工具、外部执行或工作调度能力。遵守传入的角色规则，不能虚构已执行的工作。"},
                     {"role": "user", "content": prompt},
                 ],
             }, ensure_ascii=False).encode("utf-8")
+            if self._budget is not None:
+                self._budget.admit(config, payload, context)
             headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "StarhavenTown/1.1"}
             if key:
                 if any(ord(ch) < 33 or ord(ch) > 126 for ch in key) or len(key) > 8192:
@@ -230,6 +250,8 @@ class ProviderBridge:
                     raise RuntimeError("稽查署已暂停本次请求：" + audit.get("reason", "请求未通过规则检查。"))
             if context["cancel"].is_set() or self._closed:
                 raise RuntimeError("已取消这次回复。")
+            if self._budget is not None:
+                self._budget.dispatch(context)
             response = opener.open(request, timeout=self.socket_timeout)
             status_code = getattr(response, "status", None)
             context["response"] = response
@@ -246,6 +268,7 @@ class ProviderBridge:
             if len(raw) > MAX_RESPONSE:
                 raise RuntimeError("模型回复过长，请缩小问题范围后重试。")
             result = json.loads(raw.decode("utf-8"))
+            context["usage"] = result.get("usage") if isinstance(result, dict) else None
             content = result["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
                 raise RuntimeError("模型没有返回文字回复，请确认该模型支持对话。")
@@ -284,6 +307,14 @@ class ProviderBridge:
                 except Exception:
                     context.pop("reply", None)
                     context["error"] = "请求结果未能写入稽查档案，请检查治安系统。"
+            if self._budget is not None:
+                try:
+                    self._budget.settle(context)
+                    if not context.get("call_id"):
+                        self._budget.blocked(config, context)
+                except Exception:
+                    context.pop("reply", None)
+                    context["error"] = "用量结算未完成，预留额度继续保留，请检查本地存储。"
             context["done"].set()
             with self._lock:
                 self._pending.discard(context["thread"])
@@ -292,11 +323,19 @@ class ProviderBridge:
         return self.generate_for_agent(prompt, cancel_event, "unassigned")
 
     def generate_for_agent(self, prompt, cancel_event, agent_id):
+        return self.generate_result(prompt, cancel_event, agent_id)["text"]
+
+    def generate_result(self, prompt, cancel_event, agent_id, options=None):
+        options = options or {}
         with self._lock:
             if self._closed or cancel_event.is_set():
                 raise RuntimeError("已取消这次回复。")
             config = dict(self._config)
             if config["mode"] == "codex":
+                if self._budget is not None:
+                    external_id = self._budget.external(options, agent_id)
+                else:
+                    external_id = None
                 use_codex = True
             else:
                 use_codex = False
@@ -308,7 +347,7 @@ class ProviderBridge:
                     key = self.credentials.get(config["base_url"])
                 except CredentialError as exc:
                     raise RuntimeError(str(exc)) from exc
-                context = {"cancel": threading.Event(), "done": threading.Event(), "agent_id": agent_id}
+                context = {"cancel": threading.Event(), "done": threading.Event(), "agent_id": agent_id, "options": options}
                 worker = threading.Thread(target=self._perform_request, args=(config, key, prompt, context), daemon=True, name="town-model-request")
                 context["thread"] = worker
                 worker.town_context = context
@@ -321,20 +360,30 @@ class ProviderBridge:
                         message="本次对话使用本机 Codex；小镇无法核验其实际网络目的地、请求与重定向，仅记录外部调用边界。")
                 except Exception:
                     raise RuntimeError("稽查署暂时无法记录外部调用，已暂停对话，请检查治安档案。") from None
-            return self.codex.generate(prompt, cancel_event)
+            return dict(text=self.codex.generate(prompt, cancel_event), usage=None, call_id=external_id, provider="codex", usage_quality="unmetered")
         deadline = time.monotonic() + self.timeout
         while not context["done"].wait(.05):
-            if cancel_event.is_set() or self._closed or time.monotonic() >= deadline:
+            if cancel_event.is_set() or context["cancel"].is_set() or self._closed or time.monotonic() >= deadline:
+                was_cancelled = cancel_event.is_set() or context["cancel"].is_set() or self._closed
                 context["cancel"].set()
                 self._abort_response(context)
-                if cancel_event.is_set() or self._closed:
+                if was_cancelled:
                     raise RuntimeError("已取消这次回复。")
                 raise RuntimeError("这次模型回复等待较久，请稍后重试。")
         if cancel_event.is_set() or self._closed:
             raise RuntimeError("已取消这次回复。")
         if context.get("error"):
             raise RuntimeError(context["error"])
-        return context["reply"]
+        return dict(text=context["reply"], usage=context.get("usage"), call_id=context.get("call_id"), provider="api", model=config["model"],
+                    usage_quality="reported" if self._budget and self._budget.usage(context.get("usage")) else "unknown")
+
+    def cancel_for_agent(self, agent=None):
+        with self._lock:
+            for worker in self._pending:
+                context = worker.town_context
+                if agent is None or context["agent_id"] == agent:
+                    context["cancel"].set()
+                    self._abort_response(context)
 
     def close(self):
         with self._lock:

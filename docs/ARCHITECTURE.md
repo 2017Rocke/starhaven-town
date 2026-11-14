@@ -2,6 +2,8 @@
 
 星栖小镇是一款本机运行的像素智能体应用。日常产品形态是桌面版（macOS 原生窗口，Windows WebView2 窗口）：角色资料和聊天记录由本机应用管理；AI 回复来自用户自己选择的模型服务。仓库中的 HTTP 服务与网页资源是桌面内嵌实现，并供测试与构建使用，不再作为独立浏览器产品入口。
 
+2.0.0 在此基础上加入成长署岗位培养、项目文本任务、可追溯成果、资料权限和共享预算。具体范围、原生确认、存档迁移与限制见 [V2.0 需求与实现说明](GROWTH_V2.md)。
+
 ## 运行结构
 
 ```mermaid
@@ -14,10 +16,16 @@ flowchart LR
     Server --> DB[(SQLite 居民与聊天)]
     Server --> Ledger[只读团队台账与报告]
     Server --> Scout[星探采集工作区]
+    Server --> Growth[成长署计划与文本任务]
+    Growth --> Artifacts[成果、来源链与参考技能]
+    Growth --> Bridge
+    Server --> Owner[一次性原生确认]
+    Owner --> DB
     Scout --> GitHub[GitHub 公开元数据与源码]
     Scout --> Materials[(独立材料库与源码快照)]
     Server --> Bridge[ProviderBridge]
     Bridge --> API[用户配置的模型 API]
+    Bridge --> Budget[统一预占、资料门禁与结算]
     Bridge --> Codex[可选：本机 Codex CLI]
     Bridge --> Keychain[macOS 钥匙串]
 ```
@@ -34,6 +42,9 @@ flowchart LR
 | `desktop/Installer.swift` | 安装与更新应用，创建桌面入口 |
 | `desktop_runner.py` | 启动私有服务、报告启动结果、跟随桌面进程退出、显式迁移旧数据 |
 | `server.py` | 本机 HTTP API、输入校验、居民与聊天持久化、任务状态和团队数据读取 |
+| `town_growth.py` | 岗位计划、项目任务、串行调度和独立案例证据 |
+| `town_artifacts.py`、`town_skills.py` | 不可变成果、资料权限、参考技能与产出约定 |
+| `town_budget.py`、`town_owner_actions.py`、`town_store.py` | 授权与账务、原生确认、迁移与事件链 |
 | `provider_bridge.py` | 选择 Codex 或用户模型 API，保存公开连接配置，限制连接与回复 |
 | `credential_store.py` | macOS 钥匙串访问；非桌面调试场景可读环境变量密钥 |
 | `model_bridge.py` | 可选的本机 Codex 文本对话连接，关闭工具和外部执行能力 |

