@@ -23,7 +23,7 @@ def build_module(name):
 
 
 class DesktopPayloadTest(unittest.TestCase):
-    def test_macos_and_windows_payloads_boot_with_ten_public_residents(self):
+    def test_macos_and_windows_payloads_boot_with_eleven_public_residents(self):
         program = """
 import json
 from pathlib import Path
