@@ -288,6 +288,43 @@ class BudgetTest(GrowthFixture):
             self.app.budget.admit(dict(base_url=ENDPOINT, model="gpt-4o-mini"), payload, context)
             self.assertGreaterEqual(self.calls()[-1]["reserved"], len(sample.encode()) + 1024)
 
+    def test_deepseek_profile_is_limited_to_the_probed_endpoint_and_models(self):
+        # The probe established max_tokens truncation, integer usage with
+        # total == prompt + completion, reasoning counted inside completion, and
+        # prompt_tokens <= request bytes. Only that exact pair inherits the claim.
+        for model in ("deepseek-flash", "deepseek-v4-pro"):
+            with self.subTest(model=model):
+                capability = ProviderBridge.budget_capability(
+                    dict(mode="api", base_url="https://api.deepseek.com", model=model))
+                self.assertEqual(capability["profile"], "deepseek-reasoning-v1")
+                self.assertTrue(capability["enforce_supported"])
+                self.assertEqual(capability["output_parameter"], "max_tokens")
+        rejected = (
+            dict(mode="api", base_url="https://api.deepseek.com/v1", model="deepseek-flash"),
+            dict(mode="api", base_url="https://api.deepseek.com", model="deepseek-chat"),
+            dict(mode="api", base_url="https://api.deepseek.com", model="deepseek-pro"),
+            dict(mode="codex", base_url="https://api.deepseek.com", model="deepseek-flash"),
+            dict(mode="api", base_url="https://api.deepseek.com:443", model="deepseek-flash"),
+        )
+        for config in rejected:
+            with self.subTest(config=config):
+                self.assertFalse(ProviderBridge.budget_capability(config)["enforce_supported"])
+                self.assertEqual(ProviderBridge.budget_capability(config)["profile"], "unverified-compatible")
+
+    def test_deepseek_profile_reports_the_same_reservation_bound_as_the_other_profile(self):
+        # Both profiles must publish the identical bound strings, so the single
+        # reservation formula in town_budget cannot silently diverge per provider.
+        deepseek = ProviderBridge.budget_capability(
+            dict(mode="api", base_url="https://api.deepseek.com", model="deepseek-flash"))
+        openai = ProviderBridge.budget_capability(dict(mode="api", base_url=ENDPOINT, model="gpt-4o-mini"))
+        self.assertTrue(deepseek["enforce_supported"])
+        self.assertEqual(deepseek["input_bound"], openai["input_bound"])
+        self.assertEqual(deepseek["output_parameter"], openai["output_parameter"])
+        self.assertEqual(deepseek["input_bound"], "complete-request-utf8-bytes+512")
+        self.assertNotEqual(deepseek["profile"], openai["profile"])
+        self.assertEqual(sorted(entry["profile"] for entry in ProviderBridge.VERIFIED_PROFILES),
+                         ["deepseek-reasoning-v1", "openai-text-bpe-v1"])
+
     def test_parallel_reservations_share_the_same_last_balance(self):
         self.configure(daily_tokens=2500)
         def call(unused):

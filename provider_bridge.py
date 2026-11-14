@@ -79,17 +79,36 @@ class ProviderBridge:
     def set_budget(self, budget):
         self._budget = budget
 
+    # Verified strict-budget profiles. Each entry is a claim that, for this exact
+    # endpoint and model set, a recorded probe established all four properties the
+    # reservation `len(payload) + 512 + max_tokens` depends on:
+    #   (a) max_tokens is honoured literally, so completion_tokens <= max_tokens;
+    #   (b) usage returns integer prompt/completion/total with total == prompt + completion;
+    #   (c) any hidden reasoning is counted inside completion_tokens, not on top of it;
+    #   (d) the tokenizer keeps prompt_tokens <= the complete request's UTF-8 bytes.
+    # An arbitrary compatible server or model name does not inherit either claim.
+    VERIFIED_PROFILES = (
+        dict(profile="openai-text-bpe-v1",
+             base_url="https://api.openai.com/v1",
+             models=frozenset({"gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o",
+                               "gpt-4o-2024-08-06", "gpt-4o-2024-11-20"})),
+        dict(profile="deepseek-reasoning-v1",
+             base_url="https://api.deepseek.com",
+             models=frozenset({"deepseek-flash", "deepseek-v4-pro"})),
+    )
+
     @staticmethod
     def budget_capability(config):
-        # Explicit text-only profile: byte-level BPE input is bounded by UTF-8
-        # bytes plus chat framing; these non-reasoning models honor max_tokens.
-        # An arbitrary compatible server/model name does not inherit this claim.
-        supported = config.get("mode", "api") == "api" and config.get("base_url") == "https://api.openai.com/v1" and config.get("model") in {
-            "gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-2024-11-20",
-        }
-        return dict(profile="openai-text-bpe-v1" if supported else "unverified-compatible", enforce_supported=supported,
-                    input_bound="complete-request-utf8-bytes+512" if supported else None,
-                    output_parameter="max_tokens" if supported else None)
+        mode = config.get("mode", "api")
+        base_url, model = config.get("base_url"), config.get("model")
+        if mode == "api":
+            for entry in ProviderBridge.VERIFIED_PROFILES:
+                if base_url == entry["base_url"] and model in entry["models"]:
+                    return dict(profile=entry["profile"], enforce_supported=True,
+                                input_bound="complete-request-utf8-bytes+512",
+                                output_parameter="max_tokens")
+        return dict(profile="unverified-compatible", enforce_supported=False,
+                    input_bound=None, output_parameter=None)
 
     def _load(self):
         fallback = {"mode": "codex" if self.codex.executable else "api", "base_url": "", "model": ""}

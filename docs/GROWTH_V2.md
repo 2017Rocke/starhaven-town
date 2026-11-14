@@ -135,15 +135,28 @@
 
 ### 6.2 当前可执行严格预算的模型
 
-当前适配档案为 `openai-text-bpe-v1`，端点必须是 `https://api.openai.com/v1`，模型名必须为：
+严格预算按“已验证档案”放行。每个档案都对应一次实测：端点在 `max_tokens` 截断、`usage` 字段形状、隐藏推理是否计入输出、以及输入 `prompt_tokens` 不超过完整请求字节数这四点上都有记录。任意兼容服务或未列出的模型名都不会继承这些结论。
 
-- `gpt-4o-mini`
-- `gpt-4o-mini-2024-07-18`
-- `gpt-4o`
-- `gpt-4o-2024-08-06`
-- `gpt-4o-2024-11-20`
+| 档案 | 端点 | 模型 |
+| --- | --- | --- |
+| `openai-text-bpe-v1` | `https://api.openai.com/v1` | `gpt-4o-mini`、`gpt-4o-mini-2024-07-18`、`gpt-4o`、`gpt-4o-2024-08-06`、`gpt-4o-2024-11-20` |
+| `deepseek-reasoning-v1` | `https://api.deepseek.com` | `deepseek-flash`、`deepseek-v4-pro` |
 
-请求使用文本 Chat Completions、`max_tokens` 输出上限和 `usage` 用量映射。其他兼容 API 与本机模型可以在兼容模式聊天，但当前不能开启自动训练或宣称具有同等额度保证。上列名称是代码中的支持清单，不保证账户当前有模型访问权限；本次没有调用真实付费模型验证在线可用性。
+两个档案共用同一条预留公式：`完整请求的 UTF-8 字节数 + 512 + 单次最大输出`，输入上界标识统一为 `complete-request-utf8-bytes+512`，输出参数统一为 `max_tokens`。
+
+> `deepseek-reasoning-v1` 是 2.0.1 之后新增的未发布改动，将在下一个版本号下随发布说明一起生效。`docs/UPDATE_2.0.0.md` 与 `docs/UPDATE_2.0.1.md` 保持发布时的原文，不回填。
+
+请求使用文本 Chat Completions、`max_tokens` 输出上限和 `usage` 用量映射。其他兼容 API 与本机模型可以在兼容模式聊天，但当前不能开启自动训练或宣称具有同等额度保证。上列名称是代码中的支持清单，不保证账户当前有模型访问权限。
+
+**`deepseek-reasoning-v1` 的两点注意事项**
+
+- 这两个模型是推理模型，`reasoning_content` 会产生 token，且已计入 `completion_tokens`。实测在 1024 输出上限下，一次岗位训练有 746 个 token 花在推理上，正文被截断到 448 字；把「单次最大输出 Token」调到 **4096** 才能完整作答。推理占比高也意味着同样的训练更贵。
+- 该档案的实测证据来自六次受控调用，覆盖 16 至 4096 的输出上限、两个模型、以及普通对话与岗位训练两类提示；不是长期在线验证。若端点或模型行为改变，应按新的实测结果调整或撤销档案。
+
+| 档案 | 实测输入/字节比 | 预留余量（实测总量 vs 上界） |
+| --- | --- | --- |
+| `openai-text-bpe-v1` | 未在本次记录 | — |
+| `deepseek-reasoning-v1` | ≤ 0.33 | 1278 vs 2628 |
 
 ### 6.3 额度与结算
 
