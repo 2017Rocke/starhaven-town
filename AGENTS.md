@@ -2,6 +2,7 @@
 
 - 保留工作区内其他人的改动、已有提交和个人存档；验证安装、升级与迁移时使用临时数据。
 - 普通功能开发按任务范围实现和验证，不自动启动发版流程。
+- 跨电脑迁移小镇状态用 `scripts/state_bundle.py`：快照放 `state/town-state.zip`（只保留一份、名字固定），默认 `--strip-chat`。提交 `data/`、`*.sqlite3`、`provider.json`、`settings.json` 或聊天正文一律不做，即使被要求也要先确认目标仓库不公开。步骤见 [docs/STATE_BUNDLE.md](docs/STATE_BUNDLE.md)。
 
 ## 发布入口
 

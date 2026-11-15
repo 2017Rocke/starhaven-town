@@ -165,13 +165,16 @@ def collect(data_dir, include_materials):
     return entries, notes
 
 
-def strip_chat(source, destination):
-    """Copy the database without conversation rows.
+def build_database(source, destination, strip):
+    """Write one self-contained database for the bundle.
 
-    Chat text is the most personal part of a town and is not needed to carry
-    training results, artefacts, budgets or audit records to another machine.
-    The copy is left as one self-contained file: a trailing -wal beside the
-    bundle would put the removed rows back on restore.
+    The copy goes through SQLite's backup API so a town that is still running
+    cannot leave committed rows behind in an unshipped -wal file. Chat text is
+    the most personal part of a town and is not needed to carry training
+    results, artefacts, budgets or audit records to another machine, so it can
+    be dropped here. The result is checkpointed and switched back to a plain
+    rollback journal: a trailing -wal beside the bundle would put removed rows
+    back on restore.
     """
     origin = sqlite3.connect("file:%s?mode=ro" % source.as_posix(), uri=True)
     try:
@@ -180,6 +183,8 @@ def strip_chat(source, destination):
             origin.backup(target)
             removed = {}
             for table in ("messages", "v2_message_sources"):
+                if not strip:
+                    break
                 try:
                     removed[table] = target.execute("DELETE FROM %s" % table).rowcount
                 except sqlite3.DatabaseError:
@@ -192,11 +197,11 @@ def strip_chat(source, destination):
             target.close()
     finally:
         origin.close()
-    for sidecar in (",-wal", "-shm", "-journal"):
+    for sidecar in ("-wal", "-shm", "-journal"):
         leftover = Path(str(destination) + sidecar)
         if leftover.exists():
             leftover.unlink()
-    return removed
+    return removed if strip else {}
 
 
 def export_bundle(args):
@@ -207,15 +212,14 @@ def export_bundle(args):
         raise SystemExit("小镇正在运行。请先完全退出应用再导出，避免数据库与成果文件不一致。")
 
     entries, notes = collect(data_dir, args.include_materials)
-    stripped = None
+    import tempfile
+    handle, temporary = tempfile.mkstemp(suffix=".sqlite3", prefix="town-bundle-")
+    os.close(handle)
+    removed = build_database(data_dir / "town.sqlite3", Path(temporary), args.strip_chat)
+    entries = [(relative, Path(temporary) if relative == "town.sqlite3" else path)
+               for relative, path in entries]
     if args.strip_chat:
-        import tempfile
-        handle, temporary = tempfile.mkstemp(suffix=".sqlite3", prefix="town-chatless-")
-        os.close(handle)
-        stripped = strip_chat(data_dir / "town.sqlite3", Path(temporary))
-        entries = [(relative, Path(temporary) if relative == "town.sqlite3" else path)
-                   for relative, path in entries]
-        notes.append("已移除聊天正文：%s" % json.dumps(stripped, ensure_ascii=False))
+        notes.append("已移除聊天正文：%s" % json.dumps(removed, ensure_ascii=False))
 
     bundled_db = next(source for relative, source in entries if relative == "town.sqlite3")
     redactions = []
@@ -262,8 +266,8 @@ def export_bundle(args):
     print("已导出 %s" % output)
     print("  文件 %d 个，共 %.1f MB" % (len(files), total / (1 << 20)))
     print("  记录：%s" % json.dumps(manifest["database"], ensure_ascii=False))
-    if stripped is not None:
-        print("  聊天正文已移除（%s）" % json.dumps(stripped, ensure_ascii=False))
+    if args.strip_chat:
+        print("  聊天正文已移除（%s）" % json.dumps(removed, ensure_ascii=False))
     if notes:
         for note in notes:
             print("  " + note)
