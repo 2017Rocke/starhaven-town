@@ -474,6 +474,21 @@ class BudgetTest(GrowthFixture):
 
 
 class TrainingTest(GrowthFixture):
+    def test_workspace_exposes_the_task_requirement_but_not_the_answers(self):
+        # The card only showed the generic plan goal, so the concrete instruction
+        # the resident actually received was invisible in the UI.
+        self.configure(residents=["resident-yanghui"])
+        self.app.growth.plan()
+        task = self.app.growth.workspace()["tasks"][0]
+        self.assertIn("岗位：产品经理", task["prompt"])
+        self.assertIn("练习主题：", task["prompt"])
+        with self.app.db() as db:
+            rubric = json.loads(db.execute("SELECT rubric FROM v2_tasks WHERE id=?", (task["id"],)).fetchone()[0])
+        self.assertEqual(len(rubric["answers"]), 8)
+        for key in rubric["answers"]:
+            self.assertNotIn(key, task["prompt"])
+        self.assertNotIn("answers", task["prompt"])
+
     def test_default_off_and_idempotent_role_plans(self):
         self.assertEqual(self.app.growth.plan()["created"], 0)
         self.configure(residents=["resident-yanghui", "resident-alige"])

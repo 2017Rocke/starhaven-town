@@ -404,7 +404,7 @@ class GrowthOffice:
                 agent["contract"] = self.app.skills.contract_status(db, agent["id"])
             return dict(policy=self.app.budget.config(db), native_available=bool(self.app.owner.secret), integrity=verify_events(db), residents=agents,
                         plans=[dict(r) for r in db.execute("SELECT * FROM v2_plans ORDER BY created_at DESC LIMIT 40")],
-                        tasks=[dict(r) for r in db.execute("SELECT id,agent_id,kind,title,status,phase,attempts,artifact_id,baseline,evaluation,error,created_at FROM v2_tasks ORDER BY created_at DESC LIMIT 100")],
+                        tasks=[dict(r) for r in db.execute("SELECT id,agent_id,kind,title,status,phase,attempts,artifact_id,baseline,evaluation,error,created_at,prompt FROM v2_tasks ORDER BY created_at DESC LIMIT 100")],
                         artifacts=[dict(r) for r in db.execute("SELECT * FROM v2_artifacts ORDER BY created_at DESC LIMIT 100")],
                         skills=[dict(r) for r in db.execute("SELECT * FROM v2_skills ORDER BY created_at DESC LIMIT 100")],
                         calls=[dict(r) for r in db.execute("SELECT * FROM v2_calls ORDER BY created_at DESC LIMIT 100")],

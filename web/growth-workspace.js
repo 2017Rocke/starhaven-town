@@ -258,6 +258,14 @@
         }
         const artifact = state.artifacts.find(a => a.id === t.artifact_id);
         if (artifact) item.append(button("查看成果", () => detail(artifact)));
+        if (t.prompt) {
+          const box = h("pre", "growth-content", t.prompt); box.hidden = true;
+          const toggle = button("查看任务要求", () => {
+            box.hidden = !box.hidden;
+            toggle.textContent = box.hidden ? "查看任务要求" : "收起任务要求";
+          });
+          item.append(toggle, box);
+        }
         if (["queued", "running"].includes(t.status)) item.append(button("取消任务", async () => { await post(`/api/training/${t.id}/cancel`); await refresh(); }));
         if (["failed", "blocked", "cancelled", "interrupted"].includes(t.status)) item.append(button("按当前权限重试", async () => { await post(`/api/training/${t.id}/retry`); await refresh(); }));
         body.append(item);
