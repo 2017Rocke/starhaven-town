@@ -325,6 +325,27 @@ class BudgetTest(GrowthFixture):
         self.assertEqual(sorted(entry["profile"] for entry in ProviderBridge.VERIFIED_PROFILES),
                          ["deepseek-reasoning-v1", "openai-text-bpe-v1"])
 
+    def test_deepseek_profile_uses_a_longer_socket_timeout_than_a_short_reply_needs(self):
+        # A non-streaming reasoning reply sends headers early and the body only
+        # once the whole answer exists, so the 20s that suits a short reply makes
+        # 4096-token training calls fail after being charged the full reservation.
+        deepseek = ProviderBridge.budget_capability(
+            dict(mode="api", base_url="https://api.deepseek.com", model="deepseek-flash"))
+        openai = ProviderBridge.budget_capability(dict(mode="api", base_url=ENDPOINT, model="gpt-4o-mini"))
+        unverified = ProviderBridge.budget_capability(
+            dict(mode="api", base_url="https://unknown.example/v1", model="deepseek-flash"))
+        self.assertEqual(deepseek["socket_timeout"], 120)
+        self.assertEqual(openai["socket_timeout"], 20)
+        self.assertIsNone(unverified["socket_timeout"])
+
+        self.bridge.save_settings(dict(mode="api", base_url="https://api.deepseek.com", model="deepseek-flash"))
+        self.bridge.generate_result("普通一句话回复。", threading.Event(), "linghang", {})
+        self.assertEqual(self.opener.timeouts[-1], 120)
+
+        self.bridge.save_settings(dict(mode="api", base_url=ENDPOINT, model="gpt-4o-mini"))
+        self.bridge.generate_result("普通一句话回复。", threading.Event(), "linghang", {})
+        self.assertEqual(self.opener.timeouts[-1], 20)
+
     def test_parallel_reservations_share_the_same_last_balance(self):
         self.configure(daily_tokens=2500)
         def call(unused):

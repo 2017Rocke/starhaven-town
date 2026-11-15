@@ -44,9 +44,11 @@ class MockOpener:
         self.wait = wait
         self.started = threading.Event()
         self.requests = []
+        self.timeouts = []
 
     def open(self, request, timeout):
         self.requests.append(request)
+        self.timeouts.append(timeout)
         self.started.set()
         if self.wait is not None:
             self.wait.wait(3)

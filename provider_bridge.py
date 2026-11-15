@@ -86,15 +86,21 @@ class ProviderBridge:
     #   (b) usage returns integer prompt/completion/total with total == prompt + completion;
     #   (c) any hidden reasoning is counted inside completion_tokens, not on top of it;
     #   (d) the tokenizer keeps prompt_tokens <= the complete request's UTF-8 bytes.
+    # `socket_timeout` is per profile because a non-streaming reasoning reply sends
+    # its headers early and the body only after the whole answer exists: at a 4096
+    # output cap a reasoning model routinely needs 15-40s, far past the 20s that
+    # suits a short non-reasoning reply.
     # An arbitrary compatible server or model name does not inherit either claim.
     VERIFIED_PROFILES = (
         dict(profile="openai-text-bpe-v1",
              base_url="https://api.openai.com/v1",
              models=frozenset({"gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o",
-                               "gpt-4o-2024-08-06", "gpt-4o-2024-11-20"})),
+                               "gpt-4o-2024-08-06", "gpt-4o-2024-11-20"}),
+             socket_timeout=20),
         dict(profile="deepseek-reasoning-v1",
              base_url="https://api.deepseek.com",
-             models=frozenset({"deepseek-flash", "deepseek-v4-pro"})),
+             models=frozenset({"deepseek-flash", "deepseek-v4-pro"}),
+             socket_timeout=120),
     )
 
     @staticmethod
@@ -106,9 +112,10 @@ class ProviderBridge:
                 if base_url == entry["base_url"] and model in entry["models"]:
                     return dict(profile=entry["profile"], enforce_supported=True,
                                 input_bound="complete-request-utf8-bytes+512",
-                                output_parameter="max_tokens")
+                                output_parameter="max_tokens",
+                                socket_timeout=entry["socket_timeout"])
         return dict(profile="unverified-compatible", enforce_supported=False,
-                    input_bound=None, output_parameter=None)
+                    input_bound=None, output_parameter=None, socket_timeout=None)
 
     def _load(self):
         fallback = {"mode": "codex" if self.codex.executable else "api", "base_url": "", "model": ""}
@@ -271,7 +278,7 @@ class ProviderBridge:
                 raise RuntimeError("已取消这次回复。")
             if self._budget is not None:
                 self._budget.dispatch(context)
-            response = opener.open(request, timeout=self.socket_timeout)
+            response = opener.open(request, timeout=self.budget_capability(config)["socket_timeout"] or self.socket_timeout)
             status_code = getattr(response, "status", None)
             context["response"] = response
             if context["cancel"].is_set():
