@@ -361,6 +361,35 @@ class BudgetTest(GrowthFixture):
         self.bridge.generate_result("普通一句话回复。", threading.Event(), "linghang", {})
         self.assertEqual(self.opener.timeouts[-1], 20)
 
+    def test_budget_refusals_name_the_limit_that_actually_blocked(self):
+        # A single oversized request must not be reported as "today's budget is gone":
+        # raising the daily quota could never clear it.
+        self.configure(daily_tokens=100000, daily_calls=12)
+        policy = self.app.budget.config()
+        policy.update(request_total_cap=2000)
+        with self.app.db() as db:
+            setting(db, "growth_policy", policy)
+        payload = pack(dict(messages=[dict(role="user", content="长" * 900)], max_tokens=1024)).encode()
+        with self.assertRaisesRegex(TownError, "超过单次上限 2000"):
+            self.app.budget.admit(dict(base_url=ENDPOINT, model="gpt-4o-mini"), payload,
+                                  dict(agent_id="linghang", cancel=threading.Event(), options={}))
+
+        policy.update(request_total_cap=32000, daily_tokens=2500)
+        with self.app.db() as db:
+            setting(db, "growth_policy", policy)
+        with self.assertRaisesRegex(TownError, "今日额度不足"):
+            self.app.budget.admit(dict(base_url=ENDPOINT, model="gpt-4o-mini"), payload,
+                                  dict(agent_id="linghang", cancel=threading.Event(), options={}))
+
+        policy.update(daily_tokens=100000, daily_calls=1)
+        with self.app.db() as db:
+            setting(db, "growth_policy", policy)
+        self.app.budget.admit(dict(base_url=ENDPOINT, model="gpt-4o-mini"), payload,
+                              dict(agent_id="linghang", cancel=threading.Event(), options={}))
+        with self.assertRaisesRegex(TownError, "今日调用次数已用完"):
+            self.app.budget.admit(dict(base_url=ENDPOINT, model="gpt-4o-mini"), payload,
+                                  dict(agent_id="linghang", cancel=threading.Event(), options={}))
+
     def test_parallel_reservations_share_the_same_last_balance(self):
         self.configure(daily_tokens=2500)
         def call(unused):
@@ -375,7 +404,7 @@ class BudgetTest(GrowthFixture):
 
     def test_full_input_reservation_rejects_oversized_request(self):
         self.configure(daily_tokens=2500)
-        with self.assertRaisesRegex(RuntimeError, "预算"):
+        with self.assertRaisesRegex(RuntimeError, "今日额度不足"):
             self.bridge.generate_result("x" * 8000, threading.Event(), "linghang", dict(controlled=True))
         self.assertEqual(self.opener.requests, [])
 

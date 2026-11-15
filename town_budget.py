@@ -176,8 +176,18 @@ class Budget:
             reserved = len(payload) + 512 + output_cap
             totals = db.execute("SELECT COALESCE(SUM(CASE WHEN status='reserved' THEN reserved ELSE charged END),0), COUNT(*) FROM v2_calls WHERE agent_id=? AND day=? AND status NOT IN ('released','blocked')", (agent, admitted_day)).fetchone()
             lifetime = db.execute("SELECT COALESCE(SUM(CASE WHEN status='reserved' THEN reserved ELSE charged END),0) FROM v2_calls WHERE agent_id=?", (agent,)).fetchone()[0]
-            if enforce and (reserved > policy["request_total_cap"] or lifetime + reserved > policy["lifetime_tokens"] or totals[0] + reserved > policy["daily_tokens"] or totals[1] >= policy["daily_calls"]):
-                raise TownError(429, "今日居民共享预算不足，聊天与训练共用额度")
+            # One shared message used to cover four very different limits, so a
+            # single oversized request looked like "today's budget is gone" and
+            # raising the daily quota could never clear it.
+            if enforce:
+                if reserved > policy["request_total_cap"]:
+                    raise TownError(429, "本次请求需预留 %d，超过单次上限 %d；请提高单次上限或缩短本轮上下文" % (reserved, policy["request_total_cap"]))
+                if lifetime + reserved > policy["lifetime_tokens"]:
+                    raise TownError(429, "累计额度不足：已用 %d，上限 %d" % (lifetime, policy["lifetime_tokens"]))
+                if totals[0] + reserved > policy["daily_tokens"]:
+                    raise TownError(429, "今日额度不足：已用 %d，每日上限 %d" % (totals[0], policy["daily_tokens"]))
+                if totals[1] >= policy["daily_calls"]:
+                    raise TownError(429, "今日调用次数已用完：%d / %d" % (totals[1], policy["daily_calls"]))
             db.execute("INSERT INTO v2_calls(id,agent_id,day,purpose,endpoint,model,reserved,status,revision,created_at) VALUES (?,?,?,?,?,?,?,'reserved',?,?)",
                        (identity, agent, admitted_day, "training" if controlled else "chat", config["base_url"], config["model"], reserved, policy["revision"], now()))
             event(db, "call_reserved", identity, {"agent_id": agent, "reserved": reserved, "enforce": enforce})
