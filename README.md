@@ -43,7 +43,7 @@ Windows 版本以 **10.0.17763.379（Windows 10 1809）** 为兼容目标，使�
 
 打开页面右上角「小镇设置」，或 macOS 菜单「设置…」。
 
-- **自选模型 API**：OpenAI 兼容 `chat/completions`，地址通常以 `/v1` 结尾，填写模型名与密钥
+- **自选模型 API**：OpenAI 兼容 `chat/completions`，地址通常以 `/v1` 结尾，填写模型名与密钥。严格预算与自动训练目前对 `gpt-4o` 系列和 DeepSeek `deepseek-flash`、`deepseek-v4-pro` 开放，其他端点保留普通聊天
 - **本机模型**：例如 `http://127.0.0.1:11434/v1`，填已安装模型名；可无密钥
 - **Codex**：使用本机已有 Codex 配置（应用不含 Codex，也不提供共享额度）
 
@@ -74,6 +74,7 @@ python3 -m unittest discover -s tests -v
 
 ## 文档
 
+- [2.1.0 严格预算扩围、跨机器快照与按岗位分题](docs/UPDATE_2.1.0.md)
 - [V2.0 需求与实现说明：成长署、资料权限与预算](docs/GROWTH_V2.md)
 - [跨电脑迁移小镇状态](docs/STATE_BUNDLE.md)（状态快照与恢复）
 - [1.13.0 村心环岛与环村巡逻](docs/UPDATE_1.13.0.md)
