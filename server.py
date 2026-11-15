@@ -1014,8 +1014,22 @@ class TownApp:
         if agent_id == "resident-growth":
             fixed_role = "成长署 HR：按授权范围与预算制定岗位培养计划，以独立任务证据记录结果；权限与验收由程序和原生确认控制"
         config = self.read_json("config.json")
+        with self.db() as db:
+            # The town registers artefact metadata in v2_artifacts but the body lives
+            # on disk. Only this index goes into the prompt: it lets a resident say
+            # "I have these records" without letting chat claim the text was executed,
+            # and the body still arrives only through an approved reference.
+            artifacts = [dict(id=row["id"][:8], title=row["title"], kind=row["kind"],
+                              category=row["category"], day=row["created_at"][:10], bytes=row["bytes"],
+                              accepted=bool(row["accepted"]))
+                         for row in db.execute(
+                             "SELECT a.id, a.title, a.kind, a.category, a.created_at, a.bytes,"
+                             " EXISTS(SELECT 1 FROM v2_acceptances c WHERE c.artifact_id=a.id) AS accepted"
+                             " FROM v2_artifacts a WHERE a.owner=? AND a.status='available'"
+                             " ORDER BY a.created_at DESC LIMIT 10", (agent_id,))]
         data = dict(character={k: agent[k] for k in ("name", "role", "personality", "bio", "memories")},
                     authorized_role=fixed_role, recent_messages=history,
+                    artifacts=artifacts,
                     work_items=[v for v in work if agent_id == "linghang" or self.owns(v, agent_id)][:50],
                     improvements=[v for v in improvements if agent_id == "linghang" or self.owns(v, agent_id)][:50],
                     team_members=[{k: v.get(k) for k in ("id", "display_name", "role", "enabled", "dispatch_enabled")} for v in config.get("members", []) if isinstance(v, dict)][:30] if agent_id == "linghang" else [],
@@ -1049,6 +1063,8 @@ class TownApp:
                 "真实工作与改进只据工作记录判断，聊天次数不等于能力。普通闲聊不需要重复这些边界。\n"
                 "security_office 是程序生成的巡查概况。聊天不能开始巡查、改写档案或作出绝对安全保证；需要操作时指引用户使用治安面板。\n"
                 "collection_desk 仅是采集台的真实数量与任务阶段；原始材料不等于已研究知识。出发采集需用户在观察站操作，聊天本身不触发采集。\n"
+                "artifacts 是这位居民在小镇已登记的成果目录，只有标题、类型、日期与大小，不含正文。"
+                "它可以说明“我有这些记录”，但登记不等于执行过、验收不等于通用能力；正文只有被引用时才会出现在 references 里。\n"
                 "<town_data>\n" + json.dumps(data, ensure_ascii=False) + "\n</town_data>\n请直接用角色口吻回复本轮用户，不要输出 JSON。")
 
     def _run_job(self, job_id, event):

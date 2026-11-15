@@ -67,6 +67,21 @@ class GrowthFixture(unittest.TestCase):
 
 
 class ArtifactTest(GrowthFixture):
+    def test_resident_prompt_lists_own_artifacts_without_the_body(self):
+        # The chat window used to show no artefact index at all, so a resident
+        # truthfully reported "no records" while its own result sat in the table.
+        artifact = self.artifact(content="只有被引用时才会出现的正文内容。")
+        prompt = self.app.prompt("linghang")
+        self.assertIn("工作结果", prompt)
+        self.assertIn(artifact["id"][:8], prompt)
+        self.assertIn('"accepted": false', prompt)
+        self.assertNotIn("只有被引用时才会出现的正文内容", prompt)
+        self.assertIn("artifacts 是这位居民在小镇已登记的成果目录", prompt)
+        self.assertNotIn("工作结果", self.app.prompt("scout"))
+
+        self.approve("accept", dict(artifact_id=artifact["id"], note="核对过"))
+        self.assertIn('"accepted": true', self.app.prompt("linghang"))
+
     def test_alias_request_ids_cannot_be_reused_after_source_dedup(self):
         first = self.artifact(request_id="first", source_id="same")
         second = self.artifact(request_id="alias", source_id="same")
