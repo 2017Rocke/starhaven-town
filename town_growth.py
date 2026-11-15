@@ -7,44 +7,119 @@ import time
 from town_store import TownError, day, digest, event, get_setting, now, pack, text, uid, verify_events
 
 ROLE_GUIDES = (
-    (("测试", "质检"), "边界测试", "给出最小值、最大值、相邻越界值、预期结果与复现步骤。"),
-    (("产品", "需求", "协调", "主管"), "需求拆解", "说明用户场景、输入、输出、优先级和可重复的验收条件。"),
-    (("开发", "工程", "架构", "代码"), "实现分析", "写出输入输出约束、算法、边界情况和测试样例；只生成文本，不执行代码。"),
-    (("网安", "稽查", "警官", "治安"), "权限审查", "区分目标地址授权与资料外发授权，说明拒绝原因与审计证据。"),
-    (("研究", "采集", "分析"), "证据研究", "只据给定材料区分事实、推断与未知，逐项记录来源和适用范围。"),
+    (("动画", "动效", "特效", "关键帧", "动作", "帧"), "动效设计",
+     "说明关键帧、每帧时长、总时长与预算、位移步长和循环衔接；只生成文本，不执行渲染。", "motion"),
+    (("美术", "视觉", "景观", "绿地", "风景", "配色", "像素", "建筑外观"), "视觉设计",
+     "说明画布边界、像素对齐、与门窗等已占用区域的避让、配色对比与可读性；只产出规格说明，不生成图片。", "canvas"),
+    (("测试", "质检"), "边界测试", "给出最小值、最大值、相邻越界值、预期结果与复现步骤。", "boundary"),
+    (("产品", "需求", "协调", "主管"), "需求拆解", "说明用户场景、输入、输出、优先级和可重复的验收条件。", "delivery"),
+    (("开发", "工程", "架构", "代码"), "实现分析", "写出输入输出约束、算法、边界情况和测试样例；只生成文本，不执行代码。", "boundary"),
+    (("网安", "稽查", "警官", "治安"), "权限审查", "区分目标地址授权与资料外发授权，说明拒绝原因与审计证据。", "delivery"),
+    (("研究", "采集", "分析"), "证据研究", "只据给定材料区分事实、推断与未知，逐项记录来源和适用范围。", "delivery"),
 )
+DEFAULT_GUIDE = ("岗位交付", "围绕岗位写出可使用的工作清单、实际示例、限制和验收方法。", "delivery")
+
+
+def family(role):
+    """Which independent-check family a role belongs to.
+
+    The family decides what the held-out cases actually test, so two residents
+    with different crafts cannot end up with the same eight yes/no questions.
+    """
+    for keys, _name, _instruction, name in ROLE_GUIDES:
+        if any(key in role for key in keys):
+            return name
+    return DEFAULT_GUIDE[2]
 
 
 def guide(role):
-    for keys, name, instruction in ROLE_GUIDES:
+    for keys, name, instruction, _family in ROLE_GUIDES:
         if any(key in role for key in keys):
             return name, instruction
-    return "岗位交付", "围绕岗位写出可使用的工作清单、实际示例、限制和验收方法。"
+    return DEFAULT_GUIDE[0], DEFAULT_GUIDE[1]
+
+
+def _plans(rng):
+    """Four passing and four failing cases, so a one-sided answer cannot score 7/8."""
+    plans = [True] * 4 + [False] * 4
+    rng.shuffle(plans)
+    return plans
 
 
 def objective(role):
-    """Fresh held-out cases. Expected answers are never included in model prompts."""
+    """Fresh held-out cases. Expected answers are never included in model prompts.
+
+    Every family balances its answer key on purpose: an all-false strategy must
+    not be able to reach most of the score, which is what made the first
+    delivery-only rubric uninformative.
+    """
     rng = random.SystemRandom()
     cases, answers = [], {}
-    boundary = any(k in role for k in ("测试", "开发", "工程", "架构"))
-    for index in range(8):
+    kind = family(role)
+    for index, want in enumerate(_plans(rng)):
         key = "case-" + str(index + 1)
-        if boundary:
+        if kind == "canvas":
+            width, height = rng.choice([(320, 280), (320, 280), (640, 480)])
+            margin = rng.choice([4, 4, 8])
+            w, h = rng.randrange(8, 97), rng.randrange(8, 97)
+            if want:
+                x = rng.randrange(margin, width - margin - w + 1)
+                y = rng.randrange(margin, height - margin - h + 1)
+            else:
+                edge = rng.choice(("left", "top", "right", "bottom"))
+                x = rng.randrange(margin, width - margin - w + 1)
+                y = rng.randrange(margin, height - margin - h + 1)
+                if edge == "left":
+                    x = margin - 1
+                elif edge == "top":
+                    y = margin - 1
+                elif edge == "right":
+                    x = width - margin - w + 1
+                else:
+                    y = height - margin - h + 1
+            cases.append(dict(id=key, canvas=[width, height], rect=[x, y, w, h], margin=margin))
+            answers[key] = (x >= margin and y >= margin
+                            and x + w <= width - margin and y + h <= height - margin)
+        elif kind == "motion":
+            max_frames = rng.choice([6, 8, 12, 16, 24])
+            frames = rng.randrange(2, max_frames + 1)
+            frame_ms = rng.choice([40, 60, 80, 100, 120])
+            budget_ms = rng.choice([600, 800, 1200, 1600, 2000])
+            while frames * frame_ms > budget_ms:
+                budget_ms += 200
+            if not want:
+                if rng.randrange(2):
+                    frames = max_frames + rng.randrange(1, 6)
+                else:
+                    frame_ms = budget_ms // frames + rng.choice([20, 40])
+            cases.append(dict(id=key, frames=frames, frame_ms=frame_ms,
+                              max_frames=max_frames, budget_ms=budget_ms))
+            answers[key] = frames <= max_frames and frames * frame_ms <= budget_ms
+        elif kind == "boundary":
             low = rng.randrange(2, 30)
             high = low + rng.randrange(3, 15)
-            value = rng.choice([low - 1, low, high, high + 1])
             exclude = bool(rng.randrange(2))
+            if want:
+                value = rng.randrange(low, high if exclude else high + 1)
+            else:
+                value = rng.choice([low - 1, high + 1] + ([high] if exclude else []))
             cases.append(dict(id=key, minimum=low, maximum=high, value=value, maximum_exclusive=exclude))
             answers[key] = low <= value < high if exclude else low <= value <= high
         else:
-            # Transferable evidence/permissions reasoning tailored by the role instruction.
-            verified, allowed, current = (bool(rng.randrange(2)) for _ in range(3))
-            cases.append(dict(id=key, source_verified=verified, sharing_allowed=allowed, current_version=current))
-            answers[key] = verified and allowed and current
-    rule = ("判断 value 是否在 minimum 到 maximum 之间；minimum 包含，maximum_exclusive=true 时 maximum 不包含。"
-            if boundary else "只有来源核实、共享获准且版本有效三项都成立，才可交付该条资料。")
+            fields = dict(source_verified=True, sharing_allowed=True, current_version=True)
+            if not want:
+                fields[rng.choice(("source_verified", "sharing_allowed", "current_version"))] = False
+            cases.append(dict(id=key, **fields))
+            answers[key] = fields["source_verified"] and fields["sharing_allowed"] and fields["current_version"]
+    rules = {
+        "canvas": "判断 rect 能否完整放进 canvas，并要求四边各留出至少 margin 像素；坐标与尺寸都是像素整数，负坐标不合法。",
+        "motion": "判断动画是否同时满足两项预算：帧数不超过 max_frames，且 frames×frame_ms 不超过 budget_ms。",
+        "boundary": "判断 value 是否在 minimum 到 maximum 之间；minimum 包含，maximum_exclusive=true 时 maximum 不包含。",
+    }
+    rule = rules.get(kind, "只有来源核实、共享获准且版本有效三项都成立，才可交付该条资料。")
     prompt = rule + "仅返回 JSON 对象，键为案例 id，值为 true 或 false。不要解释。\n" + pack(cases)
     return dict(version="heldout-v1", prompt=prompt, answers=answers, case_hash=digest(cases), rule=rule)
+
 
 
 def grade(reply, rubric):

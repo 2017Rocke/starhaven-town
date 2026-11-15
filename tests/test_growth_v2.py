@@ -483,6 +483,42 @@ class TrainingTest(GrowthFixture):
             self.assertFalse(grade(reply, rubric)["passed"])
         self.assertTrue(grade(pack(rubric["answers"]), rubric)["passed"])
 
+    def test_each_role_family_gets_its_own_heldout_cases(self):
+        from town_growth import family
+        cases = {
+            "像素美术与场景设计 · 建筑外观、绿地与风景": ("canvas", "rect"),
+            "动效与工具效果设计 · 关键帧、循环与性能预算": ("motion", "frame_ms"),
+            "测试工程师": ("boundary", "minimum"),
+            "产品经理": ("delivery", "source_verified"),
+            "开发工程师": ("boundary", "minimum"),
+            "网安稽查官": ("delivery", "source_verified"),
+            "开源项目研究员 · 采集员": ("delivery", "source_verified"),
+        }
+        for role, (expected_family, field) in cases.items():
+            with self.subTest(role=role):
+                self.assertEqual(family(role), expected_family)
+                rubric = objective(role)
+                self.assertIn(field, rubric["prompt"])
+                self.assertEqual(len(rubric["answers"]), 8)
+                self.assertTrue(grade(pack(rubric["answers"]), rubric)["passed"])
+        # Two different crafts must not share the same held-out shape.
+        self.assertNotEqual(objective("像素美术与场景设计")["rule"],
+                            objective("动效与工具效果设计")["rule"])
+        self.assertNotEqual(objective("动效与工具效果设计")["rule"],
+                            objective("产品经理")["rule"])
+
+    def test_answer_key_is_always_balanced_so_a_one_sided_reply_cannot_score(self):
+        # An all-false key let "always reply false" reach 7/8 on the first rubric.
+        for role in ("像素美术与场景设计", "动效与工具效果设计", "测试工程师", "产品经理",
+                     "开发工程师", "开源项目研究员"):
+            for _ in range(20):
+                rubric = objective(role)
+                positives = sum(1 for value in rubric["answers"].values() if value)
+                self.assertEqual(positives, 4, role)
+                always_false = pack({key: False for key in rubric["answers"]})
+                self.assertEqual(grade(always_false, rubric)["score"], 4, role)
+                self.assertFalse(grade(always_false, rubric)["passed"], role)
+
     def test_restart_retains_unknown_charge_and_requires_explicit_retry(self):
         self.configure()
         self.app.growth.plan()
