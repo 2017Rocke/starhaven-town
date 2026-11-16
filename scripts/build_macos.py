@@ -13,11 +13,12 @@ import sys
 
 from generate_icon import generate
 from runtime_check import verify_runtime
+from bundle_documents import install_document_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "星栖小镇"
-BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py",
-                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "VERSION")
+BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "provider_verification.py", "credential_store.py",
+                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "town_curriculum.py", "town_dev_workbench.py", "town_dev_runtime.py", "town_documents.py", "town_interaction.py", "provider_features.py", "provider_streaming.py", "VERSION")
 
 
 def run(*args, **kwargs):
@@ -128,6 +129,8 @@ def main():
     backend = resources / "backend"
     copy_backend(backend)
     copy_runtime(args.python_runtime.resolve(), backend / "runtime")
+    install_document_runtime(backend / "runtime")
+    verify_runtime(backend / "runtime")
     launcher = backend / "StarhavenBackend"
     launcher.write_text('#!/bin/sh\nset -eu\nbackend_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\nexport SSL_CERT_FILE=/etc/ssl/cert.pem\nexec "$backend_dir/runtime/bin/python3" -I -B "$backend_dir/desktop_runner.py" "$@"\n')
     launcher.chmod(0o755)

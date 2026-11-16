@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 34" shape-rendering="crispEdges">
+  <title>测试工程师</title>
+  <rect x="3" y="31" width="19" height="2" fill="#6d795e33"/>
+  <rect x="7" y="26" width="4" height="5" fill="#4d6468"/>
+  <rect x="14" y="26" width="4" height="5" fill="#41575c"/>
+  <rect x="6" y="30" width="6" height="3" fill="#55524c"/>
+  <rect x="13" y="30" width="6" height="3" fill="#484640"/>
+  <rect x="6" y="16" width="13" height="11" fill="#5f7d86"/>
+  <rect x="4" y="18" width="3" height="7" fill="#70909a"/>
+  <rect x="19" y="18" width="3" height="6" fill="#4d6870"/>
+  <rect x="10" y="16" width="5" height="3" fill="#c99b77"/>
+  <rect x="11" y="19" width="2" height="7" fill="#d8c7a2"/>
+  <rect x="7" y="25" width="12" height="3" fill="#456068"/>
+  <rect x="16" y="20" width="2" height="2" fill="#d4be86"/>
+  <rect x="6" y="5" width="14" height="10" fill="#3e4246"/>
+  <rect x="5" y="9" width="16" height="5" fill="#c99b77"/>
+  <rect x="7" y="7" width="12" height="10" fill="#c99b77"/>
+  <rect x="9" y="16" width="8" height="2" fill="#c99b77"/>
+  <rect x="7" y="4" width="8" height="3" fill="#3e4246"/>
+  <rect x="12" y="3" width="6" height="3" fill="#3e4246"/>
+  <rect x="6" y="7" width="3" height="3" fill="#3e4246"/>
+  <rect x="17" y="6" width="3" height="4" fill="#3e4246"/>
+  <rect x="8" y="6" width="6" height="1" fill="#6a6e70"/>
+  <rect x="9" y="10" width="2" height="2" fill="#314248"/>
+  <rect x="15" y="10" width="2" height="2" fill="#314248"/>
+  <rect x="12" y="14" width="3" height="1" fill="#965f4d"/>
+  <rect x="1" y="19" width="7" height="9" fill="#8a7358"/>
+  <rect x="2" y="20" width="5" height="7" fill="#efe6cc"/>
+  <rect x="3" y="22" width="2" height="1" fill="#6f8a72"/>
+  <rect x="5" y="23" width="1" height="1" fill="#6f8a72"/>
+  <rect x="4" y="25" width="2" height="1" fill="#a56a58"/>
+  <rect x="3" y="26" width="1" height="1" fill="#a56a58"/>
+  <rect x="18" y="22" width="5" height="1" fill="#c9a56a"/>
+  <rect x="17" y="23" width="6" height="1" fill="#c99b77"/>
+</svg>

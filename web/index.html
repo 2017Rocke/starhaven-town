@@ -10,6 +10,9 @@
   <link rel="stylesheet" href="/scout-workspace.css">
   <link rel="stylesheet" href="/security-workspace.css">
   <link rel="stylesheet" href="/growth-workspace.css">
+  <link rel="stylesheet" href="/dev-workspace.css">
+  <link rel="stylesheet" href="/resident-workspace.css">
+  <link rel="stylesheet" href="/local-skills.css">
   <script src="/house-art.js" defer></script>
   <script src="/scout-art.js" defer></script>
   <script src="/forest-art.js" defer></script>
@@ -19,6 +22,9 @@
   <script src="/road-navigation.js" defer></script>
   <script src="/security-workspace.js" defer></script>
   <script src="/growth-workspace.js" defer></script>
+  <script src="/resident-workspace.js" defer></script>
+  <script src="/local-skills.js" defer></script>
+  <script src="/dev-workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -52,6 +58,7 @@
         <button class="nav-item" id="tab-police" data-view="police" role="tab" aria-selected="false" aria-controls="view-police"><svg><use href="#i-shield"/></svg><span>警察署</span></button>
         <button class="nav-item" id="tab-inspection" data-view="inspection" role="tab" aria-selected="false" aria-controls="view-inspection"><svg><use href="#i-inspection"/></svg><span>稽查署</span></button>
         <button class="nav-item" id="tab-tasks" data-view="tasks" role="tab" aria-selected="false" aria-controls="view-tasks"><svg><use href="#i-board"/></svg><span>任务板</span></button>
+        <button class="nav-item" id="tab-development" data-view="development" role="tab" aria-selected="false" aria-controls="view-development"><svg><use href="#i-edit"/></svg><span>研发台</span></button>
         <button class="nav-item" id="tab-growth" data-view="growth" role="tab" aria-selected="false" aria-controls="view-growth"><svg><use href="#i-leaf"/></svg><span>成长册</span></button>
       </div>
       <button class="nav-item add-nav" id="add-agent-nav" title="邀请新居民"><svg><use href="#i-plus"/></svg><span>新居民</span></button>
@@ -131,6 +138,9 @@
         <div id="improvement-list" class="improvement-list"></div>
       </section>
 
+      <section id="view-development" class="view content-view dev-view" role="tabpanel" aria-labelledby="tab-development" hidden><div id="dev-workspace"><p class="dev-note">正在打开研发工作簿…</p></div></section>
+      <section id="view-resident-work" class="view content-view resident-work-view" aria-label="居民分步工作" hidden><div id="resident-workspace"><p class="resident-note">正在打开分步工作记录…</p></div></section>
+
       <div class="connection-banner" id="connection-banner" role="alert" hidden><span id="connection-error"></span><button id="reload-state">重新连接</button></div>
     </main>
 
@@ -139,11 +149,13 @@
       <div class="resident-list" id="resident-list" aria-label="选择对话伙伴"></div>
       <div class="selected-profile" id="selected-profile"><div class="profile-loading">伙伴正在回家的路上…</div></div>
       <div class="conversation-heading"><div><span class="tiny-dot"></span><span id="conversation-title">小镇会客厅</span></div><button class="text-button" id="edit-profile" disabled>角色档案 <svg><use href="#i-arrow"/></svg></button></div>
+      <div class="resident-work-entry"><span>长任务、文档和图片，可以分步完成</span><button type="button" id="open-resident-work" disabled>分步工作 <span aria-hidden="true">↗</span></button></div>
       <div class="chat-messages" id="chat-messages" role="log" aria-label="与伙伴的对话" aria-live="polite" aria-relevant="additions text"></div>
       <div class="chat-alert" id="chat-alert" role="alert" hidden></div>
       <div class="suggestions" id="suggestions" aria-label="聊天灵感"></div>
       <form class="chat-form" id="chat-form">
         <div id="growth-chat-sources" aria-live="polite"></div>
+        <div id="local-skills-chat" class="local-skills-chat" aria-live="polite" hidden></div>
         <label class="sr-only" for="chat-input">发给当前伙伴的消息</label>
         <textarea id="chat-input" rows="2" maxlength="8000" placeholder="告诉伙伴，你在想什么…" disabled></textarea>
         <div class="composer-bottom"><span class="composer-hint">Enter 发送 · Shift + Enter 换行</span><button class="send-button" id="send-message" type="submit" aria-label="发送消息" disabled><svg><use href="#i-send"/></svg></button><button class="stop-button" id="stop-message" type="button" hidden><svg><use href="#i-stop"/></svg>停止</button></div>
@@ -161,7 +173,7 @@
     <form id="profile-form">
       <div class="dialog-header"><div><p class="eyebrow" id="dialog-eyebrow">A FRIEND WITH A STORY</p><h2 id="profile-dialog-title">角色档案</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭角色档案"><svg><use href="#i-close"/></svg></button></div>
       <p class="dialog-copy" id="dialog-copy">把伙伴的风格、故事和需要记住的事，慢慢补充完整。</p>
-      <fieldset id="avatar-picker" class="avatar-picker"><legend>选一个喜欢的像素形象</legend><div id="avatar-options" class="avatar-options"></div><p class="avatar-help">十三款小镇装扮，随时可以在角色档案中更换。</p></fieldset>
+      <fieldset id="avatar-picker" class="avatar-picker"><legend>选一个喜欢的像素形象</legend><div id="avatar-options" class="avatar-options"></div><p class="avatar-help">多款小镇装扮，随时可以在角色档案中更换。</p></fieldset>
       <label class="field-label" for="agent-name">伙伴的名字<input id="agent-name" name="name" maxlength="32" required placeholder="给伙伴起个名字"></label>
       <label class="field-label" id="role-field" for="agent-role">擅长的工作<input id="agent-role" name="role" maxlength="80" placeholder="例如：创意设计师、知识整理员"></label>
       <label class="field-label" for="agent-personality">相处的风格<textarea id="agent-personality" name="personality" maxlength="1500" rows="2" placeholder="例如：温柔直接，喜欢用具体例子解释复杂问题"></textarea></label>
@@ -186,15 +198,19 @@
         <legend class="sr-only">选择模型连接方式</legend>
         <div class="model-mode-options">
           <label><input type="radio" name="model-mode" value="codex" checked><span><strong>沿用本机 Codex</strong><small>使用这台电脑已有的模型配置</small></span></label>
-          <label><input type="radio" name="model-mode" value="api"><span><strong>连接模型 API</strong><small>填写兼容 OpenAI 的服务信息</small></span></label>
+          <label><input type="radio" name="model-mode" value="api"><span><strong>连接模型 API</strong><small>选择服务协议，填写连接信息</small></span></label>
         </div>
         <p class="settings-help mode-copy" id="codex-mode-copy">适合已安装并配置 Codex 的电脑。小镇会沿用已有配置，无需在这里填写密钥。</p>
         <fieldset id="api-settings-fields" class="api-settings-fields" hidden disabled>
           <legend class="sr-only">API 连接信息</legend>
-          <label class="field-label" for="model-base-url">服务地址<input id="model-base-url" name="base_url" type="url" required maxlength="500" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" autocomplete="url" spellcheck="false"></label>
+          <label class="field-label" for="model-protocol">服务协议<select id="model-protocol" name="protocol"><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic Messages</option></select></label>
+          <label class="field-label" id="model-auth-field" for="model-auth-type" hidden>鉴权方式<select id="model-auth-type" name="auth_type" disabled><option value="api_key">API 密钥（标准 x-api-key）</option><option value="bearer">Bearer Token（按网关要求）</option></select></label>
+          <label class="field-label" for="model-base-url">服务地址<input id="model-base-url" name="base_url" type="url" required maxlength="500" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" autocomplete="url" spellcheck="false" aria-describedby="model-protocol-help"></label>
+          <p class="settings-help" id="model-protocol-help">填写服务商提供的 API 前缀，OpenAI 官方地址通常以 /v1 结尾。</p>
           <label class="field-label" for="model-name">模型名称<input id="model-name" name="model" required maxlength="160" placeholder="填写服务商提供的模型名称" autocomplete="off" spellcheck="false"></label>
           <label class="field-label" for="model-api-key">API 密钥 <span id="api-key-status">尚未读取保存状态</span><input id="model-api-key" name="api_key" type="password" maxlength="4096" placeholder="粘贴你的 API 密钥" autocomplete="new-password" spellcheck="false" aria-describedby="api-key-help"></label>
           <p class="settings-help" id="api-key-help">macOS 存钥匙串，Windows 存凭据管理器，均不会回填到页面；其他平台可用环境变量 STARHAVEN_API_KEY。留空可继续使用已有密钥。</p>
+          <p class="settings-help">协议兼容可用于聊天；受控研发、训练仍需用量适配与授权。</p>
         </fieldset>
       </fieldset>
       <p class="form-error" id="model-settings-error" role="alert" hidden></p>

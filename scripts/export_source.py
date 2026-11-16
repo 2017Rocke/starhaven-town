@@ -7,6 +7,10 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {"VERSION", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", "AGENTS.md", ".gitignore", "requirements-build.txt", "server.py", "model_bridge.py", "provider_bridge.py", "credential_store.py", "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "desktop_runner.py", "打开星栖小镇.command", "使用说明.md"}
+FILES.add("town_curriculum.py")
+FILES.add("provider_verification.py")
+FILES.update({"provider_features.py", "provider_streaming.py", "town_documents.py", "town_interaction.py", "requirements-runtime.txt"})
+FILES.update({"town_dev_workbench.py", "town_dev_runtime.py"})
 DIRECTORIES = {"web", "desktop", "scripts", "tests", "docs", "defaults", ".github", ".agents/skills/starhaven-release"}
 SUFFIXES = {".py", ".swift", ".cs", ".manifest", ".iss", ".ps1", ".md", ".json", ".html", ".css", ".js", ".svg", ".yml", ".yaml", ".png"}
 

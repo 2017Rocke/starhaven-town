@@ -13,6 +13,10 @@ dist/
 .env.*
 !.env.example
 provider.json
+model-budget-verifications.json
+.model-budget-verifications-*.tmp
+model-feature-verifications.json
+.model-feature-*
 settings.json
 *.pem
 *.p12

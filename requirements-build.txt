@@ -1,3 +1,5 @@
-# No pip packages required. macOS: Swift, a relocatable Python runtime, codesign, iconutil, hdiutil.
+# Host build interpreter needs pip (or run builds with `uv run --with pip`).
+# Runtime parsing dependencies are pinned in requirements-runtime.txt and bundled automatically.
+# macOS: Swift, a relocatable Python runtime, codesign, iconutil, hdiutil.
 # Windows: Python 3.12 x64 runtime, .NET Framework C# compiler, Inno Setup 6.
 # build_windows.py downloads the pinned official WebView2 SDK with a SHA-256 check.

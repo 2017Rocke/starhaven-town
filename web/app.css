@@ -98,3 +98,6 @@
 /* 走近村心时才显示小花园入口，拖到村外时收起 */
 .garden-sign{transition:opacity .25s}
 .town-scene.panned .garden-sign{display:none}
+/* Protocol controls follow the settings dialog theme without affecting other selects. */
+#model-protocol,#model-auth-type{display:block;width:100%;margin-top:7px;padding:10px;border:1px solid var(--settings-edge);border-radius:0;background:var(--settings-field);color:var(--ink);font:inherit;font-size:13px;line-height:1.7}#model-protocol:focus-visible,#model-auth-type:focus-visible{outline:3px solid #c58d56;outline-offset:4px}
+.resident-work-entry{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;color:var(--muted);font-size:10px;line-height:1.6}.resident-work-entry>span{min-width:0}.resident-work-entry button{flex-shrink:0;border:1px solid var(--line);padding:6px 9px;color:var(--green-dark);background:var(--mint);font:inherit;font-size:11px}.resident-work-entry button:disabled{opacity:.5}.resident-work-entry button:focus-visible{outline:3px solid #c58d56;outline-offset:3px}

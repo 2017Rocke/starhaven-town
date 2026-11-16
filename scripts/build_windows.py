@@ -12,12 +12,13 @@ import subprocess
 import sys
 import zipfile
 import zlib
+from bundle_documents import install_document_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "StarhavenTown"
 DISPLAY_NAME = "星栖小镇"
-BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "credential_store.py",
-                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "VERSION")
+BACKEND_FILES = ("server.py", "desktop_runner.py", "model_bridge.py", "provider_bridge.py", "provider_verification.py", "credential_store.py",
+                 "scout_workshop.py", "scout_collect.py", "scout_scan.py", "scout_journey.py", "town_security.py", "town_roads.py", "town_store.py", "town_artifacts.py", "town_budget.py", "town_skills.py", "town_owner_actions.py", "town_growth.py", "town_curriculum.py", "town_dev_workbench.py", "town_dev_runtime.py", "town_documents.py", "town_interaction.py", "provider_features.py", "provider_streaming.py", "VERSION")
 
 
 def run(*args, **kwargs):
@@ -182,6 +183,7 @@ def build_package(runtime_src: Path, output_dir: Path, version: str) -> Path:
         shutil.copy2(ROOT / name, package / name)
     runtime = backend / "runtime"
     copy_runtime(runtime_src, runtime)
+    install_document_runtime(runtime, windows=True)
     from runtime_check_windows import verify_runtime
     print("Bundled runtime:", verify_runtime(runtime, check_https=True))
     generate_icon_png(package / "app-icon.png")

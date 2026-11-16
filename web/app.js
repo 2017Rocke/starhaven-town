@@ -45,6 +45,8 @@
     { id: "inspector", name: "网络稽查员", color: "#7d8b79" },
     { id: "planner", name: "产品经理", color: "#8aa9bd" },
     { id: "tester", name: "测试工程师", color: "#a86b5f" },
+    { id: "product", name: "产品经理·设计室", color: "#7f9788" },
+    { id: "tester-local", name: "测试工程师·检查台", color: "#5f7d86" },
   ];
   const avatarFiles = new Set(avatarChoices.map(choice => choice.id));
   const chosenAvatar = agent => avatarFiles.has(agent?.avatar) ? agent.avatar : agent?.id === "scout" ? "scout" : "captain";
@@ -225,12 +227,47 @@
     });
   }
 
+  function updateModelProtocol() {
+    const anthropic = $("#model-protocol").value === "anthropic";
+    $("#model-auth-field").hidden = !anthropic;
+    $("#model-auth-type").disabled = !anthropic;
+    $("#model-protocol-help").textContent = anthropic
+      ? "可填服务根地址、/v1、完整 /v1/messages 或网关前缀；小镇会整理为 Messages 地址。"
+      : "填写服务商提供的 API 前缀，OpenAI 官方地址通常以 /v1 结尾；使用 Bearer 鉴权。";
+    $("#model-base-url").placeholder = anthropic ? "https://api.anthropic.com" : "https://api.openai.com/v1";
+  }
+
+  function modelSettingsState(settings, saved = false) {
+    const prefix = saved ? "连接设置已保存。" : "设置仅保存在这台电脑。";
+    const capability = settings.budget_capability;
+    if (settings.mode !== "api" || !capability || typeof capability !== "object") {
+      return `${prefix}给伙伴发一条消息，可以检查是否连接成功。`;
+    }
+    const authorization = "研发或训练仍需培养网络授权，发送源码另需项目授权。";
+    if (capability.enforce_supported === true) {
+      if (capability.local_verification === true) {
+        const limits = [];
+        if (typeof capability.expires_at === "string") {
+          const expiry = new Date(capability.expires_at);
+          if (Number.isFinite(expiry.getTime())) limits.push(`有效至 ${expiry.toISOString().slice(0, 10)}（UTC）`);
+        }
+        if (Number.isSafeInteger(capability.max_output_tokens) && capability.max_output_tokens > 0) limits.push(`单次输出 ≤ ${capability.max_output_tokens} Token`);
+        if (Number.isSafeInteger(capability.max_request_bytes) && capability.max_request_bytes > 0) limits.push(`请求 ≤ ${capability.max_request_bytes} 字节`);
+        return `${prefix}已保存连接的本机用量验证已通过${limits.length ? `（${limits.join("；")}）` : ""}。${authorization}`;
+      }
+      return `${prefix}已保存连接具备受控预算适配。${authorization}`;
+    }
+    const nextStep = settings.protocol === "anthropic" ? "研发或训练需先完成本机用量验证和培养网络授权，发送源码另需项目授权。" : "研发或训练需先具备受控预算适配并完成培养网络授权，发送源码另需项目授权。";
+    return `${prefix}已保存连接尚无有效的受控预算适配；可主动发消息检查普通聊天。${nextStep}`;
+  }
+
   function updateModelMode() {
     const apiMode = $("input[name='model-mode']:checked").value === "api";
     $("#api-settings-fields").hidden = !apiMode;
     $("#api-settings-fields").disabled = !apiMode;
     $("#codex-mode-copy").hidden = apiMode;
     $("#model-api-key").disabled = ui.modelSettings?.can_store_api_key === false;
+    updateModelProtocol();
   }
 
   function openSettings() {
@@ -251,11 +288,16 @@
       const settings = result.settings || result;
       ui.modelSettings = {
         mode: settings.mode === "api" ? "api" : "codex",
+        protocol: settings.protocol === "anthropic" ? "anthropic" : "openai",
+        auth_type: settings.protocol === "anthropic" && settings.auth_type !== "bearer" ? "api_key" : "bearer",
         has_api_key: !!settings.has_api_key,
         can_store_api_key: settings.can_store_api_key !== false,
+        budget_capability: settings.budget_capability || null,
       };
       $(`input[name='model-mode'][value='${ui.modelSettings.mode}']`).checked = true;
-      $("#model-base-url").value = settings.base_url || "https://api.openai.com/v1";
+      $("#model-protocol").value = ui.modelSettings.protocol;
+      $("#model-auth-type").value = ui.modelSettings.protocol === "anthropic" ? ui.modelSettings.auth_type : "api_key";
+      $("#model-base-url").value = settings.base_url || (ui.modelSettings.protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1");
       $("#model-name").value = settings.model || "";
       $("#model-api-key").value = "";
       $("#model-api-key").placeholder = settings.has_api_key ? "已设置，留空保持原密钥" : "粘贴你的 API 密钥";
@@ -265,7 +307,7 @@
       ui.settingsLoaded = true;
       $("#model-settings-fields").disabled = false;
       $("#save-model-settings").disabled = false;
-      $("#model-settings-state").textContent = "设置仅保存在这台电脑，保存后可发一条消息检查连接。";
+      $("#model-settings-state").textContent = modelSettingsState(ui.modelSettings);
       updateModelMode();
     } catch (error) {
       $("#model-settings-error").textContent = error.message;
@@ -280,9 +322,12 @@
     if (!ui.settingsLoaded || ui.settingsSaving) return;
     const body = {
       mode: $("input[name='model-mode']:checked").value,
-      base_url: $("#model-base-url").value.trim() || "https://api.openai.com/v1",
+      protocol: $("#model-protocol").value === "anthropic" ? "anthropic" : "openai",
+      auth_type: $("#model-protocol").value === "anthropic" && $("#model-auth-type").value !== "bearer" ? "api_key" : "bearer",
+      base_url: $("#model-base-url").value.trim(),
       model: $("#model-name").value.trim(),
     };
+    if (body.mode === "api" && !body.base_url) { $("#model-base-url").focus(); return; }
     if (body.mode === "api" && !body.model) { $("#model-name").focus(); return; }
     if (body.mode === "api" && !$("#model-api-key").disabled && $("#model-api-key").value.trim()) {
       body.api_key = $("#model-api-key").value.trim();
@@ -296,16 +341,16 @@
     try {
       const result = await api("/api/model-settings", { method: "POST", body });
       const settings = result.settings || result;
-      ui.modelSettings = { ...ui.modelSettings, mode: body.mode, has_api_key: !!settings.has_api_key };
+      ui.modelSettings = { ...ui.modelSettings, mode: body.mode, protocol: body.protocol, auth_type: body.auth_type, has_api_key: !!settings.has_api_key, budget_capability: settings.budget_capability || null };
       $("#api-key-status").textContent = settings.has_api_key ? "已设置 · 不回填" : "尚未设置";
       $("#model-api-key").placeholder = settings.has_api_key ? "已设置，留空保持原密钥" : (ui.modelSettings.can_store_api_key ? "粘贴你的 API 密钥" : "此平台请通过环境变量配置密钥");
-      $("#model-settings-state").textContent = "连接设置已保存。给伙伴发一条消息，就能检查是否连接成功。";
+      $("#model-settings-state").textContent = modelSettingsState(ui.modelSettings, true);
       await loadState();
       toast("连接设置已保存，去和伙伴聊聊吧。");
     } catch (error) {
       $("#model-settings-error").textContent = error.message;
       $("#model-settings-error").hidden = false;
-      $("#model-settings-state").textContent = "地址和模型名称已保留。若本次填写了密钥，请重新输入后再试。";
+      $("#model-settings-state").textContent = "连接选项已保留。若本次填写了密钥，请重新输入后再试。";
     } finally {
       delete body.api_key;
       ui.settingsSaving = false;
@@ -331,7 +376,7 @@
   }
 
   function showView(name) {
-    if (!["town", "scout", "police", "inspection", "tasks", "growth"].includes(name)) return;
+    if (!["town", "scout", "police", "inspection", "tasks", "development", "growth", "resident-work"].includes(name)) return;
     ui.view = name;
     $$("[data-view]").forEach(button => {
       const selected = button.dataset.view === name;
@@ -351,6 +396,8 @@
     }
     const securityAgent = window.StarhavenSecurityWorkspace?.agentForOffice(name);
     if (name === "growth") window.StarhavenGrowthWorkspace?.open();
+    window.StarhavenDevWorkspace?.viewChanged(name);
+    window.StarhavenResidentWorkspace?.viewChanged(name);
     if (securityAgent) {
       window.StarhavenSecurityWorkspace.open(name);
       if (ui.state?.agents.some(agent => agent.id === securityAgent) && ui.selected !== securityAgent) selectAgent(securityAgent);
@@ -386,6 +433,8 @@
         ui.selected = data.agents.some(agent => agent.id === data.selected_agent_id) ? data.selected_agent_id : data.agents[0]?.id || null;
       }
       renderState();
+      window.StarhavenResidentWorkspace?.agentChanged(ui.selected);
+      window.StarhavenLocalSkills?.agentChanged(ui.selected);
       $("#connection-banner").hidden = true;
       if (initial || previous !== ui.selected) {
         $("#chat-input").value = getDraft(ui.selected);
@@ -478,7 +527,16 @@
       else if (agent.id === "scout") showView("scout");
       else { showView("town"); revealResident(agent.id); }
     });
-    container.replaceChildren(top, el("p", "profile-personality", agent.personality || agent.bio || "每次相处，都多了解彼此一点。"), home, status);
+    const cultivation = el("button", "growth-button profile-cultivation", "培养方向");
+    cultivation.type = "button";
+    cultivation.setAttribute("aria-label", `设置${agent.name}的培养方向`);
+    cultivation.addEventListener("click", async () => {
+      cultivation.disabled = true;
+      try { await window.StarhavenGrowthWorkspace?.editDirection(agent.id); }
+      catch (error) { toast(error.message); }
+      finally { cultivation.disabled = false; }
+    });
+    container.replaceChildren(top, el("p", "profile-personality", agent.personality || agent.bio || "每次相处，都多了解彼此一点。"), home, cultivation, status);
     $("#conversation-title").textContent = `和${agent.name}聊聊`;
     $("#edit-profile").disabled = agent.editable === false;
     $("#chat-input").placeholder = `告诉${agent.name}，你在想什么…`;
@@ -1051,6 +1109,8 @@
     renderProfile();
     updateMap();
     updateComposer();
+    window.StarhavenResidentWorkspace?.agentChanged(id);
+    window.StarhavenLocalSkills?.agentChanged(id);
     showChatError(id, ui.chatErrors.get(id));
     if (ui.messages.has(id)) renderMessages(id);
     else $("#chat-messages").replaceChildren(el("p", "loading-copy", "正在翻开你们的聊天记录…"));
@@ -1155,6 +1215,7 @@
     const agent = currentAgent();
     const busy = agent ? isBusy(agent.id) : false;
     $("#chat-input").disabled = !agent;
+    $("#open-resident-work").disabled = !agent;
     $("#send-message").hidden = busy;
     $("#send-message").disabled = !agent || busy || !$("#chat-input").value.trim();
     $("#stop-message").hidden = !busy;
@@ -1171,14 +1232,18 @@
     const id = agent.id;
     const existing = ui.requests.get(id);
     const request = !retry && existing?.content === content ? existing : { id: requestId(), content };
+    if (!request.localSkillIds) request.localSkillIds = window.StarhavenLocalSkills?.selected(id) || [];
+    if (!request.localSkillFiles) request.localSkillFiles = window.StarhavenLocalSkills?.selectedFiles(id, request.localSkillIds) || Object.fromEntries(request.localSkillIds.map(skillId => [skillId, ["SKILL.md"]]));
     ui.requests.set(id, request);
     ui.submitting.add(id);
+    window.StarhavenLocalSkills?.setBusy(id, true);
     showChatError(id, null);
     updateComposer();
     try {
       if (!request.sources) request.sources = window.StarhavenGrowthWorkspace?.sources(id) || [];
-      const result = await api("/api/chat", { method: "POST", body: { agent_id: id, message: content, request_id: request.id, sources: request.sources } });
+      const result = await api("/api/chat", { method: "POST", body: { agent_id: id, message: content, request_id: request.id, sources: request.sources, local_skill_ids: request.localSkillIds, local_skill_files: request.localSkillFiles } });
       window.StarhavenGrowthWorkspace?.clearSources(id);
+      window.StarhavenLocalSkills?.clearSelected(id, request.localSkillIds);
       ui.requests.delete(id);
       if (!retry && getDraft(id).trim() === content) {
         saveDraft(id, "");
@@ -1191,6 +1256,7 @@
       showChatError(id, error.message);
     } finally {
       ui.submitting.delete(id);
+      window.StarhavenLocalSkills?.setBusy(id, false);
       if (ui.selected === id) { updateComposer(); renderMessages(id, false); }
     }
   }
@@ -1459,8 +1525,10 @@
   $("#model-settings-form").addEventListener("submit", saveModelSettings);
   $("#reload-model-settings").addEventListener("click", loadModelSettings);
   $$("input[name='model-mode']").forEach(input => input.addEventListener("change", updateModelMode));
+  $("#model-protocol").addEventListener("change", updateModelProtocol);
   window.addEventListener("hashchange", () => { if (location.hash === "#settings") openSettings(); });
   $("#chat-form").addEventListener("submit", event => { event.preventDefault(); sendMessage(); });
+  $("#open-resident-work").addEventListener("click", () => window.StarhavenResidentWorkspace?.open(ui.selected));
   $("#chat-input").addEventListener("input", () => { saveDraft(ui.selected, $("#chat-input").value); updateComposer(); });
   $("#chat-input").addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage(); }
@@ -1477,6 +1545,9 @@
   window.StarhavenScoutWorkspace?.init({ api, el, toast, showView, centerMap, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   window.StarhavenSecurityWorkspace?.init({ api, el, toast, showView, centerMap, selectAgent, getAvatar: chosenAvatar, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   window.StarhavenGrowthWorkspace?.init({ api, el, toast, showView, selectAgent, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
+  window.StarhavenResidentWorkspace?.init({ api, el, toast, showView, selectAgent, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
+  window.StarhavenLocalSkills?.init({ api, el, toast, getState: () => ui.state, getSelected: () => ui.selected });
+  window.StarhavenDevWorkspace?.init({ api, el, toast, showView, selectAgent, getState: () => ui.state, getView: () => ui.view, getSelected: () => ui.selected });
   showView(showSettingsInitially ? "town" : location.hash.slice(1) || "town");
   initMapPan();
   loadSkins();

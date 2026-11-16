@@ -20,6 +20,8 @@
     angling: { roof: ["#c2ae7f", "#d8c493", "#9e8c63"], wall: ["#e2d9bd", "#efe7cd", "#c8bda0"], wood: ["#7f8f8a", "#a5b2ab", "#61716c"] },
     police: { roof: ["#718696", "#94a6ae", "#536b7b"], wall: ["#c4cecc", "#e0e2d5", "#a6b5b3"], wood: ["#71828b", "#a1b0ae", "#536770"] },
     inspection: { roof: ["#678780", "#8ba59a", "#496c67"], wall: ["#bccbbb", "#d9dfc9", "#9dac9f"], wood: ["#6b8075", "#9aaf96", "#4d655d"] },
+    studio: { roof: ["#8fa398", "#b3c2ae", "#6d8578"], wall: ["#d5d8c4", "#e7ead8", "#b7c0ab"], wood: ["#7f9788", "#a8b8a4", "#5d756c"] },
+    laboratory: { roof: ["#6d868c", "#90a6ac", "#516e76"], wall: ["#c5cfc8", "#e3e6d8", "#a8b6b0"], wood: ["#6d868c", "#9aafaa", "#4d656c"] },
   };
   const C = {
     stone: "#b4b59b", stoneLight: "#cfceb2", stoneDark: "#929b81",
@@ -73,7 +75,7 @@
   }
   function resolve(agent) {
     const style = Object.prototype.hasOwnProperty.call(STYLES, agent?.house?.style) ? agent.house.style : "cottage";
-    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden", police: "security", inspection: "audit", product: "roadmap", qa: "checklist" };
+    const defaults = { workshop: "tools", architecture: "blueprint", farm: "poultry", music: "music", finance: "finance", school: "books", observatory: "stars", command: "planning", angling: "fishing", cottage: "garden", police: "security", inspection: "audit", product: "roadmap", qa: "checklist", studio: "requirements", laboratory: "checks" };
     return { style, p: STYLES[style], motif: agent?.house?.motif && agent.house.motif !== "none" ? agent.house.motif : defaults[style], variant: Math.abs(Number(agent?.house?.variant) || 0) % 4 };
   }
   function stoneBase(g, x, y, w) {
@@ -491,6 +493,8 @@
     angling: { roof: 20, door: 140, left: 28, right: 292 },
     police: { roof: 24, door: 132, left: 28, right: 292 },
     inspection: { roof: 12, door: 132, left: 28, right: 292 },
+    studio: { roof: 36, door: 132, left: 28, right: 292 },
+    laboratory: { roof: 28, door: 132, left: 36, right: 284 },
   };
   function layout(agent) {
     const m = LAYOUTS[resolve(agent).style];
@@ -587,6 +591,10 @@
       for(const dy of [5,9,13]) rect(g,cx-19,y+dy,4,4,p.roof[2]);
       for(const dy of [5,9,13]) rect(g,cx-12,y+dy+1,24,2,p.wall[2]);
       rect(g,cx+10,y+9,4,2,"#b8635a");rect(g,cx+13,y+12,2,2,"#b8635a");
+    } else if(kind==="brief") {
+      rect(g,cx-16,y+4,10,8,C.cream);rect(g,cx-4,y+4,20,2,p.roof[2]);rect(g,cx-4,y+8,14,2,p.wood[1]);
+    } else if(kind==="checks") {
+      rect(g,cx-12,y+4,6,6,C.greenDark);rect(g,cx-4,y+6,4,2,C.greenDark);rect(g,cx+4,y+4,6,6,"#a56a58");
     } else {
       rect(g,x+8,y+6,10,2,p.roof[2]);rect(g,x+24,y+6,width-32,2,p.wood[0]);rect(g,x+10,y+10,width-20,2,p.wood[1]);
     }
@@ -808,6 +816,28 @@
       rect(garage,236,166,8,4,p.wood[2]);rect(garage,210,176,60,4,C.stoneDark);
       rect(g,106,132,12,28,p.wood[2]);rect(g,108,134,8,8,p.roof[1]);rect(g,110,136,4,4,C.cream);
       rect(g,108,146,8,2,p.wall[1]);rect(g,108,152,8,2,p.wall[1]);lantern(g,p,184,132);
+    } else if(style==="studio") {
+      // A low design room: wide eaves, one large reading window, a pinned brief.
+      facade(g,p,44,108,232,180);
+      tiledRoof(g,p,28,44,264,12,8);
+      windowFrame(g,p,64,124,40,36,true);
+      windowFrame(g,p,220,124,32,28,true);
+      plaque(g,p,124,108,72,"brief");
+      rect(g,108,140,16,28,p.wood[2]);rect(g,110,142,12,24,C.cream);
+      rect(g,112,146,8,2,p.roof[0]);rect(g,112,152,8,2,p.roof[0]);rect(g,112,158,4,2,C.greenDark);
+      lantern(g,p,196,132);
+    } else if(style==="laboratory") {
+      // A narrow check shed with an observation window and a clipboard by the door.
+      facade(g,p,52,100,216,180,"timber");
+      chimney(g,p,228,52,40);
+      tiledRoof(g,p,40,36,240,14,6);
+      windowFrame(g,p,68,120,36,28,true);
+      rect(g,212,116,48,36,p.wood[2]);rect(g,216,120,40,28,"#789c92");
+      rect(g,220,124,12,4,C.cream);rect(g,236,124,12,4,C.cream);rect(g,220,132,28,2,C.cream);
+      rect(g,108,136,12,28,p.wood[2]);rect(g,110,138,8,22,C.cream);
+      rect(g,112,142,4,2,C.greenDark);rect(g,112,148,4,2,"#a56a58");
+      awning(g,p,112);
+      plaque(g,p,128,108,64,"checks");
     } else if(style==="angling") {
       facade(g,p,44,112,232,188,"timber");
       reedRoof(g,p,32,28,256,20);thatchStreaks(g,p,32,28,256,20);
@@ -826,7 +856,7 @@
     }
     door(g,p,144,m.door);
     // Individual homes retain one small, reproducible change in furnishing.
-    if(!["observatory","angling","command","school","police","inspection","product","qa"].includes(style))lantern(g,p,variant%2?192:120,m.door+4);
+    if(!["observatory","angling","command","school","police","inspection","product","qa","studio"].includes(style))lantern(g,p,variant%2?192:120,m.door+4);
     return g;
   }
   function plantPot(g,p,x,y) {
@@ -915,7 +945,7 @@
       rect(easel,200,190,80,44,p.wood[1]);rect(easel,204,194,72,36,C.cream);
       for(const [dy,w,col] of [[202,52,p.roof[0]],[212,38,p.roof[2]],[222,58,p.roof[1]]]) rect(easel,208,dy,w,4,col);
       for(const dy of [202,212,222]) rect(easel,206,dy-1,4,6,C.gold);
-      crate(f,p,180,236,22);plantPot(f,p,288,224);
+      crate(f,p,200,236,22);plantPot(f,p,288,224);
     } else if(style==="qa") {
       // Left: a bench where cases are replayed. Right: an instrument cart and
       // the specimen shelf, deliberately sparse so the red roof leads.
@@ -935,7 +965,7 @@
       rect(cart,214,196,44,28,p.roof[2]);rect(cart,218,200,36,20,"#6c5a52");
       for(let x=222;x<250;x+=8) rect(cart,x,204,4,12,"#c9645a");
       rect(cart,264,204,24,20,C.cream);rect(cart,267,208,18,2,"#b8635a");rect(cart,267,213,13,2,"#b8635a");
-      crate(f,p,200,246,20);plantPot(f,p,286,226);
+      crate(f,p,200,236,20);plantPot(f,p,286,226);
     } else if(style==="police") {
       const desk=group("checking-desk");f.append(desk);
       rect(desk,24,226,96,8,p.wood[0]);rect(desk,24,226,96,2,p.wood[1]);
@@ -997,6 +1027,21 @@
     } else if(style==="school") {
       bookshelf(f,p,24,192,92,52);rect(f,28,244,4,12,p.wood[2]);rect(f,108,244,4,12,p.wood[2]);
       discussion(f,p,208,198);rect(f,284,226,12,20,"#9cb38a");rect(f,286,226,8,2,C.cream);
+    } else if(style==="studio") {
+      bulletin(f,p,24,188,96);
+      rect(f,204,226,92,8,p.wood[0]);rect(f,204,226,92,2,p.wood[1]);
+      rect(f,208,234,4,20,p.wood[2]);rect(f,284,234,4,20,p.wood[2]);
+      blueprint(f,p,212,196,64,28);
+      rect(f,228,228,40,8,C.cream);rect(f,232,230,28,2,p.roof[2]);
+      plantPot(f,p,272,206);
+    } else if(style==="laboratory") {
+      const bench=group("check-bench");f.append(bench);
+      rect(bench,24,226,96,8,p.wood[0]);rect(bench,24,226,96,2,p.wood[1]);
+      rect(bench,28,234,4,22,p.wood[2]);rect(bench,108,234,4,22,p.wood[2]);
+      rect(bench,36,204,28,20,C.cream);rect(bench,40,208,8,2,C.greenDark);rect(bench,40,214,16,2,"#a56a58");
+      rect(bench,72,210,36,12,p.wood[2]);rect(bench,76,214,28,4,"#789c92");
+      crate(f,p,208,204,28);crate(f,p,248,204,28);
+      rect(f,214,196,16,8,C.cream);rect(f,254,196,12,8,"#a56a58");
     } else if(motif==="hiking") {
       // Climbing pack, rolled mat, boots and a route board make the cottage a
       // trailhead. Everything is outside the clear central walking corridor.

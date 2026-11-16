@@ -16,7 +16,7 @@ python3 scripts/build_macos.py --python-runtime "$runtime_root"
 python3 scripts/export_source.py
 ```
 
-`runtime_root` 包含 `bin/python3` 和 `lib`。构建只使用标准库、Swift、codesign、iconutil 和 hdiutil，无需 pip 包。不同芯片分别在对应 Mac 构建；当前本地验证为 Apple 芯片。
+`runtime_root` 包含 `bin/python3` 和 `lib`。构建使用 Swift、codesign、iconutil、hdiutil 和具有 pip 的宿主 Python；自动将 requirements-runtime.txt 中固定版本的 Pillow/PDFium 二进制 wheel 安装到内置解释器。使用 uv 构建时给构建命令加 --with pip，测试时加 --with-requirements requirements-runtime.txt。不同芯片分别在对应 Mac 构建；当前本地验证为 Apple 芯片。
 
 输出 `dist/StarhavenTown-版本-macOS-架构.dmg`、校验和，以及 `starhaven-town-版本-source.zip`。开发用 app 位于 `build/macos-架构/`。安装包含运行环境，源码包需要用户自行安装 Python。
 
@@ -82,7 +82,7 @@ python3 scripts/export_source.py
 
 构建平台的成功范围按实际环境说明：`windows-2022` 不等于 Windows 10 `17763.379` 实机验收，默认 Mac 产物也不代表已完成 Apple 公证。日常 GitHub 操作见 [上传与更新步骤](GITHUB_USAGE.md)。
 
-构建包含 `scout_journey.py`、V2 成长署模块、公开的默认居民配置和完整网页资源。全新数据目录应加载十三位初始居民，包括领航、星探、两位警官、研发小组、梵高、达芬奇和成长官；已有小镇不会因更新默认配置被覆盖，新角色按稳定编号和迁移记录补入空闲地块。安装测试使用临时数据，不能用发布者的实际数据替代这项检查。
+构建包含 `scout_journey.py`、V2 成长署模块、公开的默认居民配置和完整网页资源。全新数据目录应加载十三位初始居民，包括领航、星探、两位警官、研发小组、梵高、达芬奇和成长官，并核对 31 块居民地块、最大 33 人的容量；已有小镇不会因更新默认配置被覆盖，已有迁移按稳定编号和完成记录补入角色，梵高和达芬奇仅在全新数据目录生成，不随升级自动添加。兼容检查应覆盖已有杨辉、李力的资料编号、姓名、住处、记忆和聊天，以及本地产品、蓝灰测试形象与设计室、实验室房型；不能因合并默认配置而把李力改名为阿力哥或新增本地自动补位流程。安装测试使用临时数据，不能用发布者的实际数据替代这项检查。
 
 ## Apple 签名公证
 

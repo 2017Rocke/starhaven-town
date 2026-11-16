@@ -143,6 +143,8 @@ def initialize(db):
     if "policy_revision" not in {row[1] for row in db.execute("PRAGMA table_info(v2_tasks)")}:
         db.execute("ALTER TABLE v2_tasks ADD COLUMN policy_revision INTEGER NOT NULL DEFAULT -1")
         db.execute("UPDATE v2_tasks SET policy_revision=COALESCE((SELECT policy_revision FROM v2_plans WHERE id=v2_tasks.plan_id),-1)")
+    if "planning" not in {row[1] for row in db.execute("PRAGMA table_info(v2_tasks)")}:
+        db.execute("ALTER TABLE v2_tasks ADD COLUMN planning TEXT NOT NULL DEFAULT '{}'")
 
 
 def event(db, kind, subject, payload):

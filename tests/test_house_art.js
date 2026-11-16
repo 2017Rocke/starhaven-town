@@ -110,9 +110,9 @@ function pointInCanvas(point, context) {
   assert.ok(point && Number.isFinite(point.x) && Number.isFinite(point.y), `${context}: expected an {x, y} point`);
   assert.ok(point.x >= 0 && point.x <= 320 && point.y >= 0 && point.y <= 280, `${context}: outside the plot`);
 }
-const styles = ["command", "observatory", "architecture", "workshop", "farm", "music", "finance", "school", "cottage", "angling", "police", "inspection"];
+const styles = ["command", "observatory", "architecture", "workshop", "farm", "music", "finance", "school", "cottage", "angling", "police", "inspection", "product", "qa", "studio", "laboratory"];
 const cases = styles.flatMap(style => [0, 1, 2, 3].map(variant => ({ house: { style, variant } })));
-for (const [style, motif] of [["workshop", "music"], ["architecture", "finance"], ["cottage", "hiking"], ["police", "security"], ["inspection", "audit"]]) {
+for (const [style, motif] of [["workshop", "music"], ["architecture", "finance"], ["cottage", "hiking"], ["police", "security"], ["inspection", "audit"], ["product", "roadmap"], ["qa", "checklist"], ["studio", "requirements"], ["laboratory", "checks"]]) {
   cases.push({ house: { style, motif, variant: 0 } });
 }
 const fixtures = cases.map(agent => ({ agent, name: `${agent.house.style}/${agent.house.motif || "default"}/${agent.house.variant}`,
@@ -220,7 +220,7 @@ check("night glass stays clear of later foreground decorations", () => {
   }
 });
 check("new residents and patrol car share crisp, bounded SVG artwork", () => {
-  for (const [name, width, height] of [["officer", 24, 34], ["inspector", 24, 34], ["police-car", 48, 28]]) {
+  for (const [name, width, height] of [["officer", 24, 34], ["inspector", 24, 34], ["planner", 24, 34], ["tester", 24, 34], ["product", 24, 34], ["tester-local", 24, 34], ["police-car", 48, 28]]) {
     const source = fs.readFileSync(path.join(__dirname, `../web/assets/${name}.svg`), "utf8");
     assert.match(source, new RegExp(`viewBox="0 0 ${width} ${height}"`), `${name}: inconsistent sprite scale`);
     assert.match(source, /shape-rendering="crispEdges"/);

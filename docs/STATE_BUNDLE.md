@@ -78,3 +78,5 @@ python scripts/state_bundle.py restore state/town-state.zip --data <安装目录
 | `scripts/state_bundle.py` | `export` / `inspect` / `restore` 三个子命令 |
 | `tests/test_state_bundle.py` | 密钥不外泄、聊天移除、恢复校验、拒绝覆盖 |
 | `state/README.md` | 快照目录的约定 |
+
+分步会话、研发工作台、原始需求附件和本机导入技能不进入通用小镇状态包；本机功能验证回执也不迁移。它们保留在本机应用数据目录，更新安装器不会删除。共享居民状态不能代替个人工作资料备份。

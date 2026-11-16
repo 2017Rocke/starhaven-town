@@ -22,4 +22,25 @@
 .growth-checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; overflow-wrap: anywhere; }
 .growth-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; background: #f2f3ec; border-radius: 8px; padding: 16px; line-height: 1.7; }
 #growth-chat-sources { font-size: 12px; padding: 0 10px; display: flex; gap: 8px; align-items: center; }
+.growth-town-goal { grid-column: 1 / -1; border-color: #bbc9ae; background: #f0f5e9; }
+.growth-cultivation-card { display: flex; flex-direction: column; align-items: flex-start; }
+.growth-cultivation-card .growth-toolbar { margin-top: auto; margin-bottom: 0; padding-top: 14px; }
+.growth-source-label { display: inline-block; padding: 3px 9px; border-radius: 5px; background: #e8eee1; color: #4d644a; font-size: 12px; }
+.growth-source-label.custom { background: #f4e6c9; color: #765b29; }
+.growth-field textarea:disabled { background: #eff1e9; color: #66715e; opacity: 1; }
+.growth-preview { border-top: 1px solid #d4ddc9; padding-top: 16px; }
+.growth-preview-day { display: grid; gap: 10px; margin-top: 20px; }
+.growth-preview-day h4 { margin: 0; font-size: 15px; color: #466042; }
+.growth-preview .growth-card { background: #f6f8f1; }
+.growth-check-list { color: #46503e; font-size: 13px; line-height: 1.8; padding-left: 22px; }
+.growth-form > [role="status"]:empty, .growth-form > [role="alert"]:empty { display: none; }
+.profile-cultivation { margin: 8px 0; width: 100%; text-align: left; }
+.growth-direction-dialog .growth-form { gap: 10px; }
+.growth-direction-dialog .growth-form > .growth-toolbar { margin-bottom: 0; }
+.growth-direction-dialog h2 { margin: 0; font-size: 20px; }
+.growth-direction-dialog .growth-form > p, .growth-direction-dialog .growth-form > [role="alert"] > p { margin: 0; }
+.growth-direction-dialog .growth-field { gap: 5px; }
+.growth-direction-dialog .growth-field textarea { min-height: 76px; height: 76px; }
+.growth-direction-dialog .growth-direction-actions { position: sticky; bottom: -24px; z-index: 1; padding: 12px 0; background: #fffef9; box-shadow: 0 -6px 10px #fffef9; }
 @media (max-width: 800px) { #growth-office { padding: 12px; } .growth-dialog { padding: 16px; } }
+@media (max-width: 800px) { .growth-direction-dialog .growth-direction-actions { bottom: -16px; } }

@@ -22,6 +22,12 @@ class OwnerActions:
     def normalize(self, db, action, payload):
         if not isinstance(payload, dict):
             raise TownError(400, "确认参数无效")
+        if action == "dev-connect":
+            return self.app.dev_runtime.normalize_connection(payload)
+        if action == "dev-apply":
+            return self.app.dev_runtime.normalize_apply(payload)
+        if action == "development-budget":
+            return self.app.budget.validate_development(payload)
         if action == "policy":
             value = self.app.budget.validate(payload, db)
             return value
@@ -73,6 +79,12 @@ class OwnerActions:
 
     def snapshot(self, db, action, payload):
         state = dict(policy=self.app.budget.config(db), access_revision=get_setting(db, "access_revision", 0))
+        if action == "dev-connect":
+            state["development"] = self.app.dev_runtime.connection_snapshot(payload, db)
+        if action == "dev-apply":
+            state["development"] = self.app.dev_runtime.apply_snapshot(payload)
+        if action == "development-budget":
+            state["development_budget"] = self.app.budget.development_config(db)
         if "artifact_id" in payload:
             row = self.app.artifacts.row(db, payload["artifact_id"])
             state["artifact"] = row
@@ -122,6 +134,8 @@ class OwnerActions:
         with self.app.db() as db:
             row, payload, snapshot = self.pending(db, identity)
         labels = {"policy": "培养计划与网络预算", "artifact-policy": "资料读取、交付与外发权限", "accept": "成果验收", "contract": "居民产出约定", "enable-skill": "启用参考技能"}
+        labels.update({"dev-connect": "吉吉的仓库读取与源码模型使用范围", "dev-apply": "将吉吉的候选修改应用到本地（不提交）",
+                       "development-budget": "研发专用额度（保留网络与源码权限）"})
         return dict(id=identity, digest=row["digest"], title=labels[row["action"]],
                     summary=json.dumps(dict(action=labels[row["action"]], settings=payload, evidence=snapshot), ensure_ascii=False, indent=2))
 
@@ -141,7 +155,13 @@ class OwnerActions:
         return dict(status=status)
 
     def apply(self, db, action, payload):
-        if action == "policy":
+        if action == "dev-connect":
+            self.app.dev_runtime.connect(payload, db)
+        elif action == "dev-apply":
+            self.app.dev_runtime.apply(payload)
+        elif action == "development-budget":
+            self.app.budget.apply_development(db, payload)
+        elif action == "policy":
             self.app.budget.apply(db, payload)
             setting(db, "revoked_residents", [r for r in get_setting(db, "revoked_residents", []) if r not in payload["residents"]])
         elif action == "artifact-policy":

@@ -1,10 +1,12 @@
 """HR plans, bounded text training, independent checks, and project assignments."""
+import datetime as dt
 import json
 import random
 import threading
 import time
 
-from town_store import TownError, day, digest, event, get_setting, now, pack, text, uid, verify_events
+from town_store import TownError, day, digest, event, get_setting, now, pack, setting, text, uid, verify_events
+from town_curriculum import recommendation, role_for, select_tasks
 
 ROLE_GUIDES = (
     (("动画", "动效", "特效", "关键帧", "动作", "帧"), "动效设计",
@@ -150,23 +152,179 @@ class GrowthOffice:
             self.thread = threading.Thread(target=self.loop, daemon=True, name="town-growth-clock")
             self.thread.start()
 
+    def _directions(self, db):
+        stored = get_setting(db, "growth_directions", {})
+        return dict(revision=stored.get("revision", 0),
+                    town_goal=stored.get("town_goal", self.app.budget.config(db)["direction"]),
+                    updated_at=stored.get("updated_at", ""), residents=stored.get("residents", {}))
+
+    def cultivation(self, db=None):
+        if db is None:
+            with self.app.db() as conn:
+                return self.cultivation(conn)
+        state = self._directions(db)
+        residents = []
+        for row in db.execute("SELECT id,name,role FROM agents ORDER BY created_at,id"):
+            agent = dict(row)
+            suggested = recommendation(agent, state["town_goal"])
+            saved = state["residents"].get(agent["id"], {})
+            custom = saved.get("mode") == "custom"
+            fields = {key: saved.get(key, "") if custom else suggested[key]
+                      for key in ("long_term", "focus", "success_criteria")}
+            effective = dict(fields)
+            if not effective["success_criteria"]:
+                effective["success_criteria"] = suggested["success_criteria"]
+            role_id, role_label, _, _ = role_for(agent)
+            residents.append(dict(agent_id=agent["id"], name=agent["name"], role=agent["role"],
+                mode="custom" if custom else "recommended", **fields, recommendation=suggested,
+                effective_direction="全镇目标：" + state["town_goal"] + "；长期方向：" + effective["long_term"] +
+                    "；近期重点：" + (effective["focus"] or "按岗位课程覆盖") +
+                    "；期望效果：" + effective["success_criteria"],
+                source_label="你单独指定" if custom else "沿用全镇目标与岗位推荐",
+                role_id=role_id, role_label=role_label))
+        return dict(revision=state["revision"], town_goal=state["town_goal"],
+                    updated_at=state["updated_at"], residents=residents)
+
+    @staticmethod
+    def _direction_text(value, label, required=False):
+        if not isinstance(value, str) or "\x00" in value or len(value.encode("utf-8")) > 4000 or len(value) > 1000:
+            raise TownError(400, label + "需为不超过1000字、4000字节的文本")
+        result = value.strip()
+        if required and not result:
+            raise TownError(400, label + "不能为空")
+        return result
+
+    def save_cultivation(self, data):
+        if not isinstance(data, dict):
+            raise TownError(400, "培养方向字段无效")
+        if type(data.get("expected_revision")) is not int or data["expected_revision"] < 0:
+            raise TownError(400, "请提供当前培养方向版本")
+        if "town_goal" in data:
+            if set(data) != {"expected_revision", "town_goal"}:
+                raise TownError(400, "全镇目标不能与居民设置同时保存")
+            update = dict(town_goal=self._direction_text(data["town_goal"], "全镇培养目标", True))
+            identity = None
+        else:
+            if set(data) - {"expected_revision", "agent_id", "mode", "long_term", "focus", "success_criteria"}:
+                raise TownError(400, "居民培养方向包含未知字段")
+            identity = text(data.get("agent_id"), "居民编号", 200)
+            mode = data.get("mode")
+            if mode not in ("custom", "recommended"):
+                raise TownError(400, "请选择自定义或沿用推荐")
+            # Validate even ignored reset fields so unexpected values cannot enter audit records.
+            fields = {key: self._direction_text(data.get(key, ""), label, mode == "custom" and key == "long_term")
+                      for key, label in (("long_term", "长期方向"), ("focus", "近期重点"), ("success_criteria", "期望效果"))}
+            update = dict(mode=mode, **fields) if mode == "custom" else dict(mode="recommended")
+        with self.app.lock, self.app.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            state = self._directions(db)
+            if data["expected_revision"] != state["revision"]:
+                raise TownError(409, "培养方向已被其他页面更新，请核对最新内容后再保存")
+            if identity:
+                self.app._agent(db, identity)
+                state["residents"] = dict(state["residents"], **{identity: update})
+            else:
+                state["town_goal"] = update["town_goal"]
+            state.update(revision=state["revision"] + 1, updated_at=now())
+            setting(db, "growth_directions", state)
+            event(db, "cultivation_direction_saved", identity or "town", dict(
+                revision=state["revision"], change=update,
+                applies_to="尚未生成的计划；已存在任务保留原方向与要求"))
+            return self.cultivation(db)
+
+    def _resident_direction(self, cultivation, identity):
+        resident = next(r for r in cultivation["residents"] if r["agent_id"] == identity)
+        return dict(long_term=resident["long_term"], focus=resident["focus"],
+                    success_criteria=resident["success_criteria"] or resident["recommendation"]["success_criteria"],
+                    town_goal=cultivation["town_goal"], mode=resident["mode"],
+                    revision=cultivation["revision"], source_label=resident["source_label"])
+
     def profile(self, db, agent):
-        records = [dict(r) for r in db.execute("SELECT status,evaluation,title FROM v2_tasks WHERE agent_id=? ORDER BY created_at DESC LIMIT 30", (agent,))]
-        evaluated = [json.loads(r["evaluation"]) for r in records if r["evaluation"]]
-        valid = []
-        for evaluation in evaluated:
+        records = [dict(r) for r in db.execute(
+            "SELECT t.id,t.status,t.evaluation,t.title,t.planning,a.artifact_id AS accepted_artifact "
+            "FROM v2_tasks t LEFT JOIN v2_acceptances a ON a.artifact_id=t.artifact_id "
+            "WHERE t.agent_id=? ORDER BY t.created_at DESC,t.rowid DESC LIMIT 30", (agent,))]
+        valid, gaps, failed_skills, accepted = [], [], [], 0
+        for record in records:
+            if record["status"] == "accepted" and record["accepted_artifact"]:
+                try:
+                    artifact = self.app.artifacts.row(db, record["accepted_artifact"])
+                    self.app.artifacts.content(artifact)
+                    accepted += 1
+                except (TownError, OSError):
+                    pass
+            evaluation = json.loads(record["evaluation"]) if record["evaluation"] else {}
             if not evaluation.get("evidence_id"):
                 continue
+            if not db.execute("SELECT 1 FROM v2_trial_evidence WHERE id=? AND task_id=?",
+                              (evaluation["evidence_id"], record["id"])).fetchone():
+                continue
             try:
-                self.evidence(evaluation["evidence_id"], db)
-                valid.append(evaluation)
+                evidence = self.evidence(evaluation["evidence_id"], db)
             except (TownError, OSError):
                 continue
-        return dict(recent_tasks=len(records), accepted=sum(r["status"] == "accepted" for r in records),
+            provenance = evidence.get("provenance", [])
+            same_model = bool(provenance) and len({(row["endpoint"], row["model"]) for row in provenance}) == 1 and len(provenance) == len(evidence.get("calls", []))
+            valid.append(dict(candidate=evidence["candidate"], improved=evidence["candidate"]["passed"]
+                and evidence["candidate"]["score"] >= evidence["baseline"]["score"] + 2 and same_model))
+            # Waiting, interrupted and blocked tasks are workflow states, not evidence of inability.
+            if record["status"] == "failed" and not evidence["candidate"]["passed"]:
+                gaps.append(record["title"])
+                skill = json.loads(record["planning"] or "{}").get("skill_id")
+                if skill:
+                    failed_skills.append(skill)
+        return dict(recent_tasks=len(records),
+                    accepted=accepted,
                     independently_passed=sum(bool(r.get("candidate", {}).get("passed")) for r in valid),
                     verified_trials=sum(bool(r.get("improved")) for r in valid),
-                    gaps=[r["title"] for r in records if r["status"] in ("failed", "review", "interrupted")][:3],
-                    basis="岗位、最近30项训练记录与独立案例检查；不是模型权重升级或通用能力认证")
+                    gaps=list(dict.fromkeys(gaps))[:3], failed_skills=list(dict.fromkeys(failed_skills)),
+                    basis="岗位课程、方向关键词、近7天课题与可核验错误；人工验收不等于能力认证，运行故障不归为能力不足")
+
+    @staticmethod
+    def _history(db, identity):
+        result = []
+        for row in db.execute("SELECT p.day,t.planning FROM v2_tasks t JOIN v2_plans p ON p.id=t.plan_id WHERE t.agent_id=?", (identity,)):
+            planning = json.loads(row["planning"] or "{}")
+            if planning.get("fingerprint") and planning.get("skill_id"):
+                result.append(dict(day=row["day"], fingerprint=planning["fingerprint"], skill_id=planning["skill_id"]))
+        return result
+
+    def preview_cultivation(self, data):
+        if not isinstance(data, dict) or set(data) != {"agent_id"}:
+            raise TownError(400, "预览需要且仅需要居民编号")
+        identity = text(data.get("agent_id"), "居民编号", 200)
+        with self.app.db() as db:
+            agent = dict(self.app._agent(db, identity))
+            config = self.app.budget.config(db)
+            cultivation = self.cultivation(db)
+            direction = self._resident_direction(cultivation, identity)
+            profile = self.profile(db, identity)
+            history = self._history(db, identity)
+            start_day = day()
+            days = []
+            for offset in range(7):
+                target = (dt.date.fromisoformat(start_day) + dt.timedelta(days=offset)).isoformat()
+                existing = db.execute("SELECT id,profile FROM v2_plans WHERE agent_id=? AND day=?", (identity, target)).fetchone()
+                if existing:
+                    tasks = []
+                    for row in db.execute("SELECT title,prompt,planning FROM v2_tasks WHERE plan_id=? ORDER BY rowid", (existing["id"],)):
+                        planning = json.loads(row["planning"] or "{}")
+                        tasks.append(dict(planning, title=row["title"], prompt=row["prompt"],
+                            reason=planning.get("reason", "已有计划，保留创建时的任务要求"),
+                            difference=planning.get("difference", "历史任务不重新排列"), existing=True))
+                    note = "已有计划按创建时方向执行；本次保存不改写已有任务。"
+                    saved_profile = json.loads(existing["profile"])
+                    if saved_profile.get("planning_note"):
+                        note += saved_profile["planning_note"]
+                else:
+                    tasks, note = select_tasks(agent, direction, history, target, config["daily_tasks"], profile["failed_skills"])
+                    for task in tasks:
+                        history.append(dict(day=target, fingerprint=task["fingerprint"], skill_id=task["skill_id"]))
+                days.append(dict(day=target, tasks=tasks, note=note, existing=bool(existing)))
+            notice = "离线预览，不调用模型、不创建任务。当前按岗位课程与关键词安排，请核对建议是否符合你的目标；专业成果需人工验收。已生成计划保留，之后尚未生成的计划使用新方向。后续记录或设置变化会影响实际课表。"
+            if not config["enabled"] or config["paused"] or identity not in config["residents"]:
+                notice += " 当前居民自动训练未启用或未获授权，保存方向不会启动训练或增加额度。"
+            return dict(agent_id=identity, direction_revision=cultivation["revision"], start_day=start_day, days=days, notice=notice)
 
     def plan(self):
         config = self.app.budget.config()
@@ -178,32 +336,35 @@ class GrowthOffice:
             config = self.app.budget.config(db)
             if not config["enabled"] or config["paused"]:
                 return dict(created=0)
+            cultivation = self.cultivation(db)
+            today = day()
             for identity in config["residents"]:
-                if db.execute("SELECT 1 FROM v2_plans WHERE agent_id=? AND day=?", (identity, day())).fetchone():
+                if db.execute("SELECT 1 FROM v2_plans WHERE agent_id=? AND day=?", (identity, today)).fetchone():
                     continue
-                agent = self.app._agent(db, identity)
+                agent = dict(self.app._agent(db, identity))
                 profile = self.profile(db, identity)
-                name, instruction = guide(agent["role"])
+                direction = self._resident_direction(cultivation, identity)
+                tasks, note = select_tasks(agent, direction, self._history(db, identity), today,
+                                          config["daily_tasks"], profile["failed_skills"])
+                profile.update(direction_snapshot=direction, planning_note=note)
                 plan = uid()
-                goal = config["direction"] + "；本次重点：" + name
-                db.execute("INSERT INTO v2_plans VALUES (?,?,?,?,?,?,?,?)", (plan, identity, day(), agent["role"], pack(profile), goal, config["revision"], now()))
-                for index in range(config["daily_tasks"]):
-                    rubric = objective(agent["role"]) if index == 0 else {}
-                    prompt = ("岗位：" + agent["role"] + "。培养方向：" + goal + "。" + instruction +
-                              "\n根据以下能力缺口制作一份可复用的工作方法和自检清单，并写两个你自己设计的示例：" + pack(profile["gaps"]))
-                    if rubric:
-                        prompt += "\n练习主题：" + rubric["rule"] + "。列出常见错误和避免方法，例子由你自己设计。"
-                    self.insert_task(db, identity, "objective" if rubric else "practice", name + ("独立训练" if rubric else "工作样稿"), prompt, rubric, [], plan)
+                goal = direction["long_term"] + ("；近期重点：" + direction["focus"] if direction["focus"] else "")
+                db.execute("INSERT INTO v2_plans VALUES (?,?,?,?,?,?,?,?)", (plan, identity, today, agent["role"], pack(profile), goal, config["revision"], now()))
+                for task in tasks:
+                    planning = {key: value for key, value in task.items() if key != "prompt"}
+                    planning.update(direction_snapshot=direction, direction_revision=cultivation["revision"], day=today)
+                    self.insert_task(db, identity, "practice", task["title"], task["prompt"], {}, [], plan, planning)
                     created += 1
-                event(db, "plan_created", plan, {"agent_id": identity, "goal": goal, "profile": profile, "policy_revision": config["revision"]})
+                event(db, "plan_created", plan, {"agent_id": identity, "goal": goal, "profile": profile,
+                    "policy_revision": config["revision"], "direction_revision": cultivation["revision"], "task_count": len(tasks)})
         return dict(created=created)
 
     @staticmethod
-    def insert_task(db, agent, kind, title, prompt, rubric, sources, plan=None):
+    def insert_task(db, agent, kind, title, prompt, rubric, sources, plan=None, planning=None):
         identity = uid()
         revision = get_setting(db, "growth_policy", {}).get("revision", 0)
-        db.execute("INSERT INTO v2_tasks(id,plan_id,agent_id,kind,title,prompt,rubric,sources,status,phase,created_at,updated_at,policy_revision) VALUES (?,?,?,?,?,?,?,?,'queued','waiting',?,?,?)",
-                   (identity, plan, agent, kind, title, prompt, pack(rubric), pack(sources), now(), now(), revision))
+        db.execute("INSERT INTO v2_tasks(id,plan_id,agent_id,kind,title,prompt,rubric,sources,status,phase,created_at,updated_at,policy_revision,planning) VALUES (?,?,?,?,?,?,?,?,'queued','waiting',?,?,?,?)",
+                   (identity, plan, agent, kind, title, prompt, pack(rubric), pack(sources), now(), now(), revision, pack(planning or {})))
         return identity
 
     def project(self, data):
@@ -402,9 +563,9 @@ class GrowthOffice:
             for agent in agents:
                 agent["profile"] = self.profile(db, agent["id"])
                 agent["contract"] = self.app.skills.contract_status(db, agent["id"])
-            return dict(policy=self.app.budget.config(db), native_available=bool(self.app.owner.secret), integrity=verify_events(db), residents=agents,
+            return dict(cultivation=self.cultivation(db), policy=self.app.budget.config(db), native_available=bool(self.app.owner.secret), integrity=verify_events(db), residents=agents,
                         plans=[dict(r) for r in db.execute("SELECT * FROM v2_plans ORDER BY created_at DESC LIMIT 40")],
-                        tasks=[dict(r) for r in db.execute("SELECT id,agent_id,kind,title,status,phase,attempts,artifact_id,baseline,evaluation,error,created_at,prompt FROM v2_tasks ORDER BY created_at DESC LIMIT 100")],
+                        tasks=[dict(r) for r in db.execute("SELECT id,agent_id,kind,title,status,phase,attempts,artifact_id,baseline,evaluation,error,created_at,prompt,planning FROM v2_tasks ORDER BY created_at DESC LIMIT 100")],
                         artifacts=[dict(r) for r in db.execute("SELECT * FROM v2_artifacts ORDER BY created_at DESC LIMIT 100")],
                         skills=[dict(r) for r in db.execute("SELECT * FROM v2_skills ORDER BY created_at DESC LIMIT 100")],
                         calls=[dict(r) for r in db.execute("SELECT * FROM v2_calls ORDER BY created_at DESC LIMIT 100")],

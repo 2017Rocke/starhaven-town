@@ -6,6 +6,8 @@ collection records and the audit archives do not have to be produced again.
 It deliberately never carries credentials: the model API key lives in the OS
 credential store, keyed by the data directory path, so it cannot travel with a
 file copy and must be entered again on the new machine.
+Local model-budget verification records also stay on their original machine;
+the destination must verify its own model connection before controlled use.
 
     python scripts/state_bundle.py export  --data <数据目录> --out <zip>
     python scripts/state_bundle.py inspect <zip>
@@ -15,7 +17,7 @@ The bundle layout is:
 
     manifest.json                     counts, hashes, redactions, exclusions
     data/town.sqlite3                 residents, chat, budget, growth records
-    data/provider.json                endpoint and model only, no credential
+    data/provider.json                endpoint, model and protocol, no credential
     data/workspaces/<id>/...          artefact bodies (the database stores hashes)
     data/scout-workshop/...           collection index, optionally the materials
     data/security-office/...          append-only audit archives and reports
@@ -39,11 +41,16 @@ FORMAT = "starhaven-town-state/1"
 # Never exported: browser cache, logs, transient locks, upgrade snapshots and the
 # per-process ready marker. Scout materials are ~65 MB of third-party source and
 # are opt-in, because a repository snapshot should stay small and reviewable.
-ALWAYS_EXCLUDED_DIRS = {"WebView2", "logs", "backups", "runtime", "__pycache__"}
-ALWAYS_EXCLUDED_FILES = {"town.lock", "settings.json"}
+PRIVATE_WORK_DIRS = {"documents", "interactions", "dev-workbench", "local-skills"}
+ALWAYS_EXCLUDED_DIRS = {"WebView2", "logs", "backups", "runtime", "__pycache__", *PRIVATE_WORK_DIRS}
+LOCAL_BUDGET_VERIFICATION_FILE = "model-budget-verifications.json"
+LOCAL_BUDGET_VERIFICATION_TEMP_PREFIX = ".model-budget-verifications-"
+BUDGET_REVERIFY_NOTICE = "本机模型预算验证档案不随状态包迁移，请在本机重新验证模型预算适配。"
+ALWAYS_EXCLUDED_FILES = {"town.lock", "settings.json", LOCAL_BUDGET_VERIFICATION_FILE, "model-feature-verifications.json"}
 RUN_DIRECTORY = re.compile(r"run-[0-9a-f]{32}")
 
-PROVIDER_KEYS = ("mode", "base_url", "model")
+PROVIDER_KEYS = ("mode", "base_url", "model", "protocol", "auth_type")
+PROVIDER_ENUMS = {"protocol": ("openai", "anthropic"), "auth_type": ("bearer", "api_key")}
 
 SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
@@ -111,15 +118,36 @@ def lock_held(data_dir):
         handle.close()
 
 
+def provider_fields(raw):
+    """Allow only portable settings; protocol/auth selectors can never carry secrets.
+
+    Missing selectors stay absent for legacy providers. Explicitly invalid
+    selectors invalidate the whole provider, rather than silently changing its
+    protocol or inheriting a verified provider's budget permissions.
+    The same whitelist is applied to imported bundles, even if another tool
+    produced a valid manifest containing extra credential fields.
+    """
+    if not isinstance(raw, dict):
+        return {}, ["provider.json 不是设置对象，已跳过"]
+    for key, choices in PROVIDER_ENUMS.items():
+        if key in raw and (not isinstance(raw[key], str) or raw[key] not in choices):
+            return {}, ["provider.json 接口协议或认证方式无效，已清空模型设置，请重新配置"]
+    protocol = raw.get("protocol", "openai")
+    auth_type = raw.get("auth_type", "api_key" if protocol == "anthropic" else "bearer")
+    if protocol == "openai" and auth_type != "bearer":
+        return {}, ["provider.json 接口协议与认证方式不匹配，已清空模型设置，请重新配置"]
+    kept = {key: raw[key] for key in PROVIDER_KEYS if key in raw}
+    dropped = sorted(set(raw) - set(kept))
+    return kept, ["provider.json 丢弃字段：%s" % ", ".join(dropped)] if dropped else []
+
+
 def scrub_provider(path):
     """Keep endpoint settings, drop anything else that might hold a credential."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}, ["provider.json 无法解析，已跳过"]
-    kept = {key: raw[key] for key in PROVIDER_KEYS if key in raw}
-    dropped = sorted(set(raw) - set(kept))
-    return kept, ["provider.json 丢弃字段：%s" % ", ".join(dropped)] if dropped else []
+    return provider_fields(raw)
 
 
 def scan_secrets(path):
@@ -133,6 +161,24 @@ def scan_secrets(path):
     return sorted({pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(text)})
 
 
+def local_budget_verification_path(value):
+    """Recognise private records across portable path and filename aliases."""
+    # Bundles can come from other tools and operating systems. Account for
+    # Windows separators, case-insensitive filesystems and trailing dots/spaces
+    # without reading or reproducing any private record contents.
+    for part in str(value).replace("\\", "/").split("/"):
+        name = part.split(":", 1)[0].rstrip(" .").casefold()
+        if name in (LOCAL_BUDGET_VERIFICATION_FILE, "model-feature-verifications.json") or name.startswith(".model-feature-") or (name.startswith(LOCAL_BUDGET_VERIFICATION_TEMP_PREFIX) and name.endswith(".tmp")):
+            return True
+    return False
+
+
+def private_work_path(value):
+    """Recognize local-only work areas before accepting cross-platform aliases."""
+    return any(part.split(":", 1)[0].rstrip(" .").casefold() in PRIVATE_WORK_DIRS
+               for part in str(value).replace("\\", "/").split("/"))
+
+
 def collect(data_dir, include_materials):
     """Yield (archive name, source path) pairs, plus the exclusion notes."""
     base = Path(data_dir).resolve()
@@ -141,6 +187,13 @@ def collect(data_dir, include_materials):
 
     def walk(folder):
         for path in sorted(folder.iterdir()):
+            # A differently named link must not reintroduce a private subtree.
+            if path.is_symlink() or private_work_path(path.name):
+                continue
+            if local_budget_verification_path(path.name):
+                if BUDGET_REVERIFY_NOTICE not in notes:
+                    notes.append(BUDGET_REVERIFY_NOTICE)
+                continue
             if path.is_dir():
                 if path.name in ALWAYS_EXCLUDED_DIRS or RUN_DIRECTORY.fullmatch(path.name):
                     continue
@@ -165,6 +218,22 @@ def collect(data_dir, include_materials):
     return entries, notes
 
 
+def remove_local_records(connection):
+    """Remove local files' indexes and native source grants from a copied DB."""
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    removed = {}
+    for table in ("v2_documents", "v2_local_skills", "v2_message_local_skills"):
+        if table in tables:
+            removed[table] = connection.execute("DELETE FROM %s" % table).rowcount
+    if "v2_meta" in tables:
+        removed["development_connections"] = connection.execute(
+            "DELETE FROM v2_meta WHERE key GLOB 'dev-connection-*'").rowcount
+    if "v2_intents" in tables:
+        removed["development_intents"] = connection.execute(
+            "DELETE FROM v2_intents WHERE action IN ('dev-connect','dev-apply')").rowcount
+    return removed
+
+
 def build_database(source, destination, strip):
     """Write one self-contained database for the bundle.
 
@@ -181,7 +250,9 @@ def build_database(source, destination, strip):
         target = sqlite3.connect(str(destination))
         try:
             origin.backup(target)
-            removed = {}
+            # Imported private work and local skill paths are never portable
+            # town state, even when the owner opts to retain ordinary chat.
+            removed = remove_local_records(target)
             for table in ("messages", "v2_message_sources"):
                 if not strip:
                     break
@@ -202,6 +273,24 @@ def build_database(source, destination, strip):
         if leftover.exists():
             leftover.unlink()
     return removed if strip else {}
+
+
+def sanitized_database(payload):
+    """Reapply local-only exclusions to databases from externally made bundles."""
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="town-state-import-") as temporary:
+        source = Path(temporary) / "source.sqlite3"
+        destination = Path(temporary) / "sanitized.sqlite3"
+        source.write_bytes(payload)
+        # External snapshots may retain the WAL header without its sidecars.
+        # Normalize only this disposable copy before opening the backup read-only.
+        connection = sqlite3.connect(source)
+        try:
+            connection.execute("PRAGMA journal_mode=DELETE")
+        finally:
+            connection.close()
+        build_database(source, destination, False)
+        return destination.read_bytes()
 
 
 def export_bundle(args):
@@ -315,13 +404,38 @@ def restore_bundle(args):
     with zipfile.ZipFile(args.bundle) as archive:
         names = set(archive.namelist())
         for relative, meta in manifest["files"].items():
+            portable_name = relative.casefold()
+            target_name = portable_name[len("data/"):] if portable_name in ("data/town.sqlite3", "data/provider.json") else relative[len("data/"):]
+            target = data_dir / target_name
+            resolved = target.resolve()
+            relative_target = resolved.relative_to(data_dir) if resolved.is_relative_to(data_dir) else resolved
+            if private_work_path(relative) or private_work_path(relative_target):
+                print("  已跳过包内居民私有资料、会话、研发工作区或本机技能")
+                continue
+            if local_budget_verification_path(relative) or local_budget_verification_path(target.resolve()):
+                print("  已跳过包内本机模型预算验证档案；" + BUDGET_REVERIFY_NOTICE)
+                continue
+            if (not relative.startswith("data/") or "\\" in relative or "\x00" in relative
+                    or any(part in ("", ".", "..") or ":" in part or part != part.rstrip(" .") for part in relative.split("/"))
+                    or data_dir not in resolved.parents):
+                raise SystemExit("状态包文件路径无效，未恢复该文件")
             if relative not in names:
                 missing.append(relative)
                 continue
             payload = archive.read(relative)
             if hashlib.sha256(payload).hexdigest() != meta["sha256"]:
                 raise SystemExit("校验失败，包内文件已被改动：%s" % relative)
-            target = data_dir / relative[len("data/"):]
+            if portable_name == "data/provider.json":
+                try:
+                    provider = json.loads(payload.decode("utf-8"))
+                except (UnicodeError, ValueError):
+                    raise SystemExit("包内 provider.json 无法解析，未恢复模型设置") from None
+                provider, redactions = provider_fields(provider)
+                payload = json.dumps(provider, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+                for note in redactions:
+                    print("  " + note)
+            if portable_name == "data/town.sqlite3":
+                payload = sanitized_database(payload)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
         # Restore the private mode the town uses for resident work areas.
@@ -334,6 +448,7 @@ def restore_bundle(args):
     print("  应用版本：%s" % manifest.get("app_version"))
     print("  记录：%s" % json.dumps(manifest.get("database") or {}, ensure_ascii=False))
     print("下一步：打开小镇后重新填写模型密钥（它不随数据包迁移）。")
+    print("  " + BUDGET_REVERIFY_NOTICE)
     return 0
 
 

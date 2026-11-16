@@ -37,3 +37,10 @@ macOS 与 Windows 安装包内置 CPython 可重定位运行时及其标准库�
 ## 素材
 
 本仓库的像素地图、人物、图标与现有皮肤作为项目素材一同维护，没有直接打包外部商业游戏素材。后续引入第三方图片、字体、声音或其他素材时，应在这里追加具体来源、作者、版本及许可证，并随包保留其必要声明。
+
+## 本地文档解析
+
+- **Pillow 11.3.0**：解析及清洗 PNG、JPEG、WebP，采用 MIT-CMU 许可；随 wheel 保留 `pillow-11.3.0.dist-info/licenses/` 和图像编解码依赖的声明。
+- **pypdfium2 4.30.0 / PDFium**：本地提取 PDF 文字及渲染页面。pypdfium2 采用 Apache-2.0 或 BSD-3-Clause，PDFium 使用 BSD 类许可及附带第三方声明。随原版 wheel 保留 `pypdfium2-4.30.0.dist-info`、`pypdfium2_raw` 内的许可文件。
+
+构建从 PyPI 安装固定版本的二进制 wheel 到内置解释器，不裁掉其许可证。PDF 和图片解析在本机完成；发送模型只发生在用户启动分步工作且相应资料授权通过后。

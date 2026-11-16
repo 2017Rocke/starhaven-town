@@ -68,7 +68,7 @@ jobs:
       - run: uv python install 3.12
       - name: Check browser code and walking behavior
         run: |
-          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/road-art.js web/road-navigation.js web/security-workspace.js web/growth-workspace.js; do
+          for script in web/app.js web/house-art.js web/scout-art.js web/scout-workspace.js web/forest-art.js web/scout-journey.js web/road-art.js web/road-navigation.js web/security-workspace.js web/growth-workspace.js web/dev-workspace.js web/resident-workspace.js web/local-skills.js; do
             node --check "$script"
           done
           node tests/test_scout_journey.js
@@ -77,14 +77,19 @@ jobs:
           node tests/test_road_art.js
           node tests/test_road_navigation.js
           node tests/test_security_workspace.js
+          node tests/test_cultivation_ui.js
+          node tests/test_dev_workbench_ui.js
+          node tests/test_local_skills_ui.js
+          node tests/test_resident_workspace_ui.js
+          node tests/test_model_settings_ui.js
       - name: Test and build
         run: |
-          uv run --python 3.12 --no-project python -m unittest discover -s tests -v
-          runtime_root="$(uv run --python 3.12 --no-project python -c 'import sys; print(sys.base_prefix)')"
-          uv run --python 3.12 --no-project python scripts/build_macos.py --python-runtime "$runtime_root"
-          STARHAVEN_TEST_INSTALLER="build/macos-$(uname -m)/安装星栖小镇.app" uv run --python 3.12 --no-project python tests/test_installer_integration.py -v
-          uv run --python 3.12 --no-project python scripts/export_source.py
-          uv run --python 3.12 --no-project python scripts/check_release.py stamp --tag "$RELEASE_TAG" --platform "${{ matrix.platform }}"
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python -m unittest discover -s tests -v
+          runtime_root="$(uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python -c 'import sys; print(sys.base_prefix)')"
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/build_macos.py --python-runtime "$runtime_root"
+          STARHAVEN_TEST_INSTALLER="build/macos-$(uname -m)/安装星栖小镇.app" uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python tests/test_installer_integration.py -v
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/export_source.py
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/check_release.py stamp --tag "$RELEASE_TAG" --platform "${{ matrix.platform }}"
       - uses: actions/upload-artifact@v4
         with:
           name: starhaven-${{ matrix.platform }}
@@ -148,7 +153,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/road-art.js', 'web/road-navigation.js', 'web/security-workspace.js', 'web/growth-workspace.js')) {
+          foreach ($script in @('web/app.js', 'web/house-art.js', 'web/scout-art.js', 'web/scout-workspace.js', 'web/forest-art.js', 'web/scout-journey.js', 'web/road-art.js', 'web/road-navigation.js', 'web/security-workspace.js', 'web/growth-workspace.js', 'web/dev-workspace.js', 'web/resident-workspace.js', 'web/local-skills.js')) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -164,22 +169,32 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/test_security_workspace.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_cultivation_ui.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_dev_workbench_ui.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_local_skills_ui.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_resident_workspace_ui.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/test_model_settings_ui.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv python install 3.12
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --python 3.12 --no-project python -m unittest discover -s tests -v
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python -m unittest discover -s tests -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $runtime = uv run --python 3.12 --no-project python -c "import sys; print(sys.base_prefix)"
+          $runtime = uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python -c "import sys; print(sys.base_prefix)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --python 3.12 --no-project python scripts/build_windows.py --python-runtime $runtime
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/build_windows.py --python-runtime $runtime
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $version = (Get-Content VERSION -Raw).Trim()
           $env:STARHAVEN_WINDOWS_APP = Join-Path $PWD "build/windows-x64/StarhavenTown-$version-windows-x64/StarhavenTown.exe"
           $env:STARHAVEN_WINDOWS_INSTALLER = Join-Path $PWD "dist/StarhavenTown-$version-windows-x64-Setup.exe"
-          uv run --python 3.12 --no-project python tests/test_windows_integration.py -v
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python tests/test_windows_integration.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --python 3.12 --no-project python scripts/export_source.py
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/export_source.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --python 3.12 --no-project python scripts/check_release.py stamp --tag $env:RELEASE_TAG --platform windows-x64
+          uv run --python 3.12 --no-project --with pip --with-requirements requirements-runtime.txt python scripts/check_release.py stamp --tag $env:RELEASE_TAG --platform windows-x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:

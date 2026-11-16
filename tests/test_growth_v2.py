@@ -25,7 +25,8 @@ class GrowthFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.opener = MockOpener()
+        self.opener = MockOpener(body=pack(dict(choices=[dict(message=dict(content="离线训练样稿"))],
+            usage=dict(prompt_tokens=5, completion_tokens=3, total_tokens=8))).encode())
         self.bridge = ProviderBridge(self.root / "runtime", self.root / "data", MemoryCredentials(), lambda: self.opener)
         self.bridge.save_settings(dict(mode="api", base_url=ENDPOINT, model="gpt-4o-mini"))
         self.app = TownApp(self.root / "data", self.bridge, self.root / "team", report_root=self.root / "reports", owner_secret="a" * 64, start_growth=False)
@@ -484,9 +485,9 @@ class TrainingTest(GrowthFixture):
         self.assertIn("练习主题：", task["prompt"])
         with self.app.db() as db:
             rubric = json.loads(db.execute("SELECT rubric FROM v2_tasks WHERE id=?", (task["id"],)).fetchone()[0])
-        self.assertEqual(len(rubric["answers"]), 8)
-        for key in rubric["answers"]:
-            self.assertNotIn(key, task["prompt"])
+        self.assertEqual(rubric, {})
+        self.assertEqual(task["kind"], "practice")
+        self.assertIn("人工专业验收", json.loads(task["planning"])["assessment"])
         self.assertNotIn("answers", task["prompt"])
 
     def test_default_off_and_idempotent_role_plans(self):
@@ -501,8 +502,11 @@ class TrainingTest(GrowthFixture):
 
     def test_three_stage_training_with_heldout_evidence_and_real_artifact(self):
         self.configure()
-        self.app.growth.plan()
+        # Imported or previously queued objective tasks retain their evidence path.
+        # New professional courses use explicit human review instead.
         with self.app.db() as db:
+            self.app.growth.insert_task(db, "linghang", "objective", "历史基础检查",
+                "说明来源、授权和版本检查方法。", objective("主管"), [])
             task = dict(db.execute("SELECT * FROM v2_tasks").fetchone())
             rubric = json.loads(task["rubric"])
         expected = rubric["answers"]

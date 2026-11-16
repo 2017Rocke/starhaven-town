@@ -1,0 +1,78 @@
+.dev-view { --dev-ink: #344c3d; --dev-muted: #687464; --dev-line: #d9dece; --dev-paper: #fffef8; }
+.dev-heading, .dev-task-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 24px; }
+.dev-heading h1 { margin: 5px 0 8px; font-size: 27px; }
+.dev-heading .eyebrow, .dev-task-heading .eyebrow { font-size: 10px; letter-spacing: .15em; color: #79856d; }
+.dev-note { color: var(--dev-muted, #687464); font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.dev-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 22px; }
+.dev-sidebar { display: grid; gap: 13px; padding: 18px; background: #eef2e6; border: 1px solid var(--dev-line); border-radius: 14px; min-width: 0; }
+.dev-sidebar > .dev-note { margin: 0; font-size: 12px; }
+.dev-button { appearance: none; border: 1px solid #bccab1; border-radius: 8px; padding: 9px 13px; background: #fffef8; color: #3d5741; font: inherit; font-size: 13px; line-height: 1.5; cursor: pointer; text-align: center; }
+.dev-button:hover:not(:disabled) { background: #eaf0e2; border-color: #8da37c; }
+.dev-button.primary { color: #fffef5; background: #526d4c; border-color: #526d4c; }
+.dev-button.primary:hover:not(:disabled) { background: #425d3e; }
+.dev-button:disabled { opacity: .5; cursor: default; }
+.dev-button:focus-visible, .dev-field input:focus-visible, .dev-field select:focus-visible, .dev-field textarea:focus-visible, .dev-consent input:focus-visible, .dev-card summary:focus-visible { outline: 3px solid #cfaa65; outline-offset: 3px; }
+.dev-crew { display: grid; gap: 5px; border-top: 1px solid #d4dcc7; padding-top: 12px; }
+.dev-crew .dev-button { border-color: transparent; background: transparent; text-align: left; padding: 4px 0; font-size: 12px; }
+.dev-task-list { display: grid; gap: 8px; border-top: 1px solid #d4dcc7; padding-top: 14px; }
+.dev-task-item { display: grid; gap: 7px; text-align: left; overflow-wrap: anywhere; }
+.dev-task-item > strong { font-weight: 600; }
+.dev-task-item > span { font-size: 11px; color: #718168; }
+.dev-task-item[aria-pressed="true"] { border-color: #7e996d; box-shadow: inset 3px 0 #7e996d; background: #f8fbf2; }
+.dev-detail { min-width: 0; }
+.dev-task-heading { margin-bottom: 8px; }
+.dev-task-heading h2 { margin: 7px 0 0; color: var(--dev-ink); font-size: 23px; overflow-wrap: anywhere; }
+.dev-badge { display: inline-block; align-self: flex-start; flex-shrink: 0; padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #4e6944; background: #eaf0e0; line-height: 1.5; }
+.dev-badge.blocked { color: #8a583c; background: #f3e6d9; }
+.dev-badge.waiting { color: #856627; background: #f5edd6; }
+.dev-progress { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; margin: 22px 0 18px; gap: 8px; }
+.dev-stage { display: grid; grid-template-columns: 21px minmax(0, 1fr); align-content: start; gap: 5px 6px; padding: 10px 8px; background: #eff3e7; border: 1px solid #d9e2ce; border-radius: 8px; color: #506346; }
+.dev-stage strong { font-size: 12px; font-weight: 600; align-self: center; }
+.dev-stage small { grid-column: 1 / -1; font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.dev-stage-number { width: 20px; height: 20px; text-align: center; line-height: 20px; font-size: 10px; border-radius: 5px; background: #dce7cf; }
+.dev-stage.blocked { background: #f7f1e8; border-color: #e7dac8; color: #86684b; }
+.dev-stage.blocked .dev-stage-number { background: #ecdfcc; }
+.dev-stage.waiting { background: #f8f4e9; border-color: #e8e0c7; color: #86744f; }
+.dev-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+.dev-toolbar h2 { margin: 0 auto 0 0; font-size: 22px; }
+.dev-card { padding: 20px; margin-top: 17px; border: 1px solid var(--dev-line, #d9dece); border-radius: 13px; background: var(--dev-paper, #fffef8); }
+.dev-card h3 { font-size: 16px; margin: 0 0 15px; color: var(--dev-ink); }
+.dev-card details + details { margin-top: 10px; }
+.dev-card summary { cursor: pointer; color: #566d49; font-size: 13px; line-height: 1.8; padding: 6px 0; overflow-wrap: anywhere; }
+.dev-card details[open] > summary { margin-bottom: 10px; }
+.dev-version-list + details { margin-top: 16px; padding-top: 12px; border-top: 1px dashed #dce0d1; }
+.dev-document { font-size: 13px; line-height: 1.8; color: #4b5948; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dev-document-field { display: grid; gap: 3px; margin-bottom: 10px; }
+.dev-document-field > strong { font-size: 12px; color: #768369; font-weight: 500; }
+.dev-document-list { padding-left: 20px; margin: 0; }
+.dev-document-list > li { margin: 8px 0; }
+.dev-field { display: grid; gap: 7px; font-size: 13px; color: #526047; }
+.dev-field + .dev-button, .dev-field + .dev-note { margin-top: 10px; }
+.dev-field input, .dev-field select, .dev-field textarea { min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid #c5cfba; border-radius: 8px; padding: 10px 11px; background: #fffef9; color: #33482f; font: inherit; line-height: 1.6; }
+.dev-field textarea { min-height: 108px; resize: vertical; }
+.dev-field select { text-overflow: ellipsis; }
+.dev-question + .dev-question, .dev-discussion + .dev-discussion { border-top: 1px dashed #dce0d1; margin-top: 15px; padding-top: 15px; }
+.dev-question > p { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; margin: 0 0 8px; }
+.dev-question .dev-field { margin-top: 10px; }
+.dev-question > .dev-document { margin-top: 8px; }
+.dev-discussion > strong { display: block; font-size: 12px; color: #7a876d; margin-bottom: 7px; }
+.dev-discussion + .dev-field { margin-top: 18px; }
+.dev-job { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 11px 0; border-top: 1px solid #e8eadf; }
+.dev-job > strong { font-size: 13px; margin-right: auto; }
+.dev-job > .dev-note { width: 100%; }
+.dev-blocked { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border: 1px solid #e4d5bc; border-radius: 8px; background: #fbf5e9; }
+.dev-blocked .dev-note { color: #866747; margin: 0; }
+.dev-error { color: #a23c2c; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dev-error:empty { display: none; }
+.dev-card>.resident-card{padding:14px;margin-top:12px}.dev-card .resident-steps{margin:12px 0}.dev-dialog .resident-attachments,.dev-card details>.resident-attachments{margin-top:12px}.dev-card .resident-work-heading{margin:0}
+.dev-dialog { width: min(760px, calc(100vw - 28px)); padding: 24px; max-height: 88vh; overflow: auto; }
+.dev-form { display: grid; gap: 15px; }
+.dev-form > .dev-toolbar { margin: 0 0 5px; }
+.dev-form .dev-note { margin: 0; }
+.dev-repository-row { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(140px, 2fr); gap: 10px; }
+.dev-consent { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.7; color: #665b40; }
+.dev-consent input { margin-top: 5px; }
+.dev-diff { max-height: 46vh; overflow: auto; padding: 14px; border-radius: 8px; background: #f0f2eb; font-size: 11px; line-height: 1.6; tab-size: 2; }
+@media (max-width: 1120px) { .dev-layout { grid-template-columns: 185px minmax(0, 1fr); gap: 14px; } .dev-sidebar, .dev-card { padding: 15px; } .dev-progress { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .dev-layout { grid-template-columns: minmax(0, 1fr); } .dev-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dev-sidebar > label, .dev-sidebar > .dev-crew, .dev-sidebar > .dev-note, .dev-sidebar > .dev-task-list { grid-column: 1 / -1; } .dev-crew { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dev-task-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .dev-heading, .dev-task-heading { flex-wrap: wrap; gap: 10px; } .dev-heading h1 { font-size: 24px; } .dev-task-heading h2 { font-size: 21px; } .dev-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dev-card { padding: 14px; } .dev-task-list, .dev-repository-row { grid-template-columns: minmax(0, 1fr); } .dev-dialog { padding: 17px; } }

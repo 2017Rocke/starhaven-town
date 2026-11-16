@@ -414,6 +414,40 @@ class MapWorldTest(unittest.TestCase):
         self.assertEqual(migrated["house"], updated["house"])
         self.assertEqual(migrated["plot"], resident["plot"])
 
+    def test_local_product_and_test_homes_survive_upgrade_and_profile_edits(self):
+        self.start()
+        tester = self.app.add_agent({"name": "李力", "role": "测试工程师", "avatar": "tester"})["agent"]
+        identities = (("resident-yanghui", "studio", "product"), (tester["id"], "laboratory", "tester"))
+        before = {}
+        with self.app.db() as db:
+            for identity, style, avatar in identities:
+                resident = self.app._agent(db, identity)
+                house = design_house(identity, resident["name"], resident["role"],
+                                     resident["personality"], resident["bio"], resident["color"], {"style": style})
+                db.execute("UPDATE agents SET avatar=?,house=?,home=?,memories=? WHERE id=?",
+                           (avatar, json.dumps(house), house["name"], '["保留原有约定"]', identity))
+                before[identity] = self.app._agent(db, identity)
+            db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)",
+                       ("local-resident-history", tester["id"], "user", "保留原有对话", "sent", "2026-11-13"))
+        messages = self.app.messages(tester["id"])
+        count = len(self.agents())
+        for _ in range(2):
+            self.start()
+            self.assertEqual(len(self.agents()), count)
+            for identity, style, avatar in identities:
+                current = self.agents()[identity]
+                for field in ("id", "name", "role", "personality", "bio", "memories", "plot", "house", "home"):
+                    self.assertEqual(current[field], before[identity][field])
+                self.assertEqual(current["avatar"], "tester-local" if avatar == "tester" else avatar)
+            self.assertEqual(self.app.messages(tester["id"]), messages)
+        edited = self.app.patch_agent(tester["id"], {"name": "李力同学", "bio": "认真记录复测结果"})["agent"]
+        self.assertEqual(edited["house"]["style"], "laboratory")
+        self.assertEqual(edited["home"], "李力同学的测试实验室")
+        # A later explicit choice of the upstream sprite must not be undone on restart.
+        self.app.patch_agent(tester["id"], {"avatar": "tester"})
+        self.start()
+        self.assertEqual(self.agents()[tester["id"]]["avatar"], "tester")
+
     def test_avatar_edit_is_persistent_without_changing_permissions_or_records(self):
         self.start()
         resident = self.app.add_agent({"name": "换装伙伴", "role": "开发工程师", "avatar": "maker", "color": "#123abc"})["agent"]
