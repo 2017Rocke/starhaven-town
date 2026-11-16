@@ -23,7 +23,8 @@ INSTALLER = os.environ.get("STARHAVEN_WINDOWS_INSTALLER")
 EXPECTED_RESIDENT_IDS = {
     "linghang", "scout", "resident-jiji", "resident-dongri", "resident-kede",
     "resident-pashanlao", "resident-officer", "resident-inspector",
-    "resident-yanghui", "resident-alige", "resident-growth",
+    "resident-yanghui", "resident-alige", "resident-vangogh", "resident-davinci",
+    "resident-growth",
 }
 
 
