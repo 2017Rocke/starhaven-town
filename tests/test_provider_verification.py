@@ -378,6 +378,14 @@ class LocalReceiptTest(unittest.TestCase):
         self.assertIsNotNone(self.profiles.capability(CONFIG, now=self.checked + TTL - 1))
         self.assertIsNone(self.profiles.capability(CONFIG, now=self.checked + TTL))
 
+    def test_fractional_clock_tick_matches_persisted_microsecond_precision(self):
+        checked = 1794837848.1234567
+        self.profiles.record(CONFIG, self.records, now=checked)
+        self.assertIsNotNone(self.profiles.capability(CONFIG, now=checked))
+        self.assertIsNone(self.profiles.capability(CONFIG, now=checked - 0.001))
+        self.assertIsNotNone(self.profiles.capability(CONFIG, now=checked + TTL - 0.001))
+        self.assertIsNone(self.profiles.capability(CONFIG, now=checked + TTL))
+
     def test_malformed_or_timezone_missing_timestamps_fail_closed_even_with_fresh_digest(self):
         self.record()
         original = json.loads(self.profiles.path.read_text())

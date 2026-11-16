@@ -148,6 +148,7 @@ class FeatureProfiles:
             with _LOCK: entries = self._read()['entries']
             identity = endpoint_identity(config)
             clock = time.time() if clock is None else clock
+            current_date = dt.datetime.fromtimestamp(clock, dt.timezone.utc)
             for feature in ('streaming','vision'):
                 matching = [r for r in entries if r.get('identity') == identity and r.get('feature') == feature]
                 if len(matching) != 1: continue
@@ -155,7 +156,8 @@ class FeatureProfiles:
                 if set(row) != {'identity','feature','status','verified_at','expires_at','observations','limits','digest'}: continue
                 if row['status'] != 'verified' or fingerprint({k:v for k,v in row.items() if k!='digest'}) != row['digest']: continue
                 start = dt.datetime.fromisoformat(row['verified_at']); end = dt.datetime.fromisoformat(row['expires_at'])
-                if start.tzinfo is None or end.tzinfo is None or not start.timestamp() <= clock < end.timestamp() or end.timestamp()-start.timestamp()!=30*86400: continue
+                if (start.tzinfo is None or end.tzinfo is None or not start <= current_date < end
+                        or end-start != dt.timedelta(days=30)): continue
                 limits = FEATURE_LIMITS if feature == 'vision' else {}
                 if row['limits'] != limits: continue
                 try: self.validate_observations(feature, row['observations'])

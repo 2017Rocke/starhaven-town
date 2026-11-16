@@ -101,8 +101,31 @@ class DevWorkbenchBudgetTest(unittest.TestCase):
 
     def test_revocation_after_reservation_releases_unsent_workbench_call(self):
         self.configure()
-        with self.assertRaises(RuntimeError):
-            self.call(before_dispatch=lambda: self.app.budget.revoke('linghang'))
+        settlement_started = threading.Event()
+        allow_settlement = threading.Event()
+        settlement_finished = threading.Event()
+        original_settle = self.app.budget.settle
+
+        def delayed_settle(context):
+            settlement_started.set()
+            try:
+                if not allow_settlement.wait(10):
+                    raise RuntimeError('Test did not release the settlement barrier')
+                original_settle(context)
+            finally:
+                settlement_finished.set()
+
+        self.app.budget.settle = delayed_settle
+        try:
+            with self.assertRaisesRegex(RuntimeError, '已取消'):
+                self.call(before_dispatch=lambda: self.app.budget.revoke('linghang'))
+            self.assertTrue(settlement_started.wait(10), 'Cancelled worker did not start settlement')
+            # Cancellation returns promptly; disk-backed accounting finishes in
+            # the worker. Exercise that interval explicitly on every platform.
+            self.assertEqual('reserved', self.ledger()[0]['status'])
+        finally:
+            allow_settlement.set()
+        self.assertTrue(settlement_finished.wait(10), 'Cancelled worker did not finish settlement')
         self.assertEqual([], self.opener.requests)
         row = self.ledger()[0]
         self.assertEqual('development', row['purpose'])

@@ -103,6 +103,16 @@ class FeatureTests(unittest.TestCase):
         import os
         if os.name != 'nt':self.assertEqual(self.profile.path.stat().st_mode & 0o777,0o600)
 
+    def test_fractional_clock_tick_is_valid_but_future_and_expired_receipts_are_not(self):
+        checked=1794837848.1234567
+        for feature in ('streaming','vision'):
+            self.profile.record(self.config,feature,self.evidence(feature),clock=checked)
+            key='supports_'+feature
+            self.assertTrue(self.profile.capability(self.config,clock=checked)[key])
+            self.assertFalse(self.profile.capability(self.config,clock=checked-0.001)[key])
+            self.assertTrue(self.profile.capability(self.config,clock=checked+30*86400-0.001)[key])
+            self.assertFalse(self.profile.capability(self.config,clock=checked+30*86400)[key])
+
     def test_image_bytes_and_token_reservation(self):
         try:from PIL import Image
         except ImportError:self.skipTest('Install requirements-runtime.txt for image tests')

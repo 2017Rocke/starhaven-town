@@ -266,9 +266,12 @@ class LocalBudgetProfiles:
             expiry_date = dt.datetime.fromisoformat(row['expires_at'])
             if start_date.tzinfo is None or expiry_date.tzinfo is None:
                 return None
-            start, expiry = start_date.timestamp(), expiry_date.timestamp()
             current = time.time() if now is None else now
-            if not start <= current < expiry or expiry-start != TTL:
+            # Receipts persist microseconds; compare the clock at that same
+            # precision. Windows may return the same clock tick after a write,
+            # while ISO serialization rounded that tick up by a fraction of a us.
+            current_date = dt.datetime.fromtimestamp(current, dt.timezone.utc)
+            if not start_date <= current_date < expiry_date or expiry_date-start_date != dt.timedelta(seconds=TTL):
                 return None
             validate_evidence(config, row['observations'], output_limit=limits['max_output_tokens'],
                               input_limit=limits['max_request_bytes'])
