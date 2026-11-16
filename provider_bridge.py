@@ -563,9 +563,11 @@ class ProviderBridge:
                     except Exception:
                         context.pop("reply", None)
                         context["error"] = "本机用量验证撤销记录未完成，受控调用保持暂停，请检查本地存储。"
-            context["done"].set()
             with self._lock:
                 self._pending.discard(context["thread"])
+            # A completed reply must free its slot before waking the caller;
+            # otherwise fast sequential calls can be rejected as still active.
+            context["done"].set()
 
     def generate(self, prompt, cancel_event):
         return self.generate_for_agent(prompt, cancel_event, "unassigned")

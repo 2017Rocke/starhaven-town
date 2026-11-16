@@ -138,6 +138,42 @@ class ProviderTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.bridge.generate("你好", threading.Event())
 
+    def test_completed_replies_release_slots_before_callers_continue(self):
+        release_workers = threading.Event()
+        workers = []
+        perform = self.bridge._perform_request
+
+        class PausedCompletion:
+            def __init__(self, event):
+                self.event = event
+
+            def wait(self, timeout=None):
+                return self.event.wait(timeout)
+
+            def set(self):
+                self.event.set()
+                # Force the caller to resume before the worker can do anything
+                # after announcing completion, independent of OS scheduling.
+                release_workers.wait(10)
+
+        def paused_perform(config, key, prompt, context):
+            workers.append(context["thread"])
+            context["done"] = PausedCompletion(context["done"])
+            perform(config, key, prompt, context)
+
+        self.bridge._perform_request = paused_perform
+        try:
+            for _ in range(3):
+                self.assertIn("欢迎", self.bridge.generate("下一次请求", threading.Event()))
+            self.assertEqual(3, len(self.opener.requests))
+            self.assertTrue(all(worker.is_alive() for worker in workers))
+            self.assertFalse(self.bridge._pending)
+        finally:
+            release_workers.set()
+            for worker in workers:
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+
     def test_cancel_is_prompt_and_retains_slot_until_connection_ends(self):
         release = threading.Event()
         self.opener = MockOpener(wait=release)
