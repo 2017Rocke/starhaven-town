@@ -2,6 +2,7 @@
 import io
 import json
 import threading
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from test_growth_v2 import GrowthFixture
@@ -42,6 +43,28 @@ class DevelopmentBridgeTest(GrowthFixture):
     def events(self, kind):
         with self.app.db() as db:
             return [json.loads(row[0]) for row in db.execute("SELECT payload FROM v2_events WHERE kind=?", (kind,))]
+
+    @contextmanager
+    def deferred_settlement(self):
+        """Cancellation returns while accounting remains reserved in the worker."""
+        allow_settlement = threading.Event()
+        settlement_finished = threading.Event()
+        settle = self.app.budget.settle
+
+        def delayed_settle(context):
+            try:
+                if not allow_settlement.wait(10):
+                    raise RuntimeError("Test did not release the settlement barrier")
+                settle(context)
+            finally:
+                settlement_finished.set()
+
+        with patch.object(self.app.budget, "settle", side_effect=delayed_settle):
+            try:
+                yield
+            finally:
+                allow_settlement.set()
+                self.assertTrue(settlement_finished.wait(10), "Cancelled worker did not finish settlement")
 
     def test_real_request_uses_32k_cap_600_second_socket_and_isolated_usage(self):
         result = self.generate()
@@ -124,9 +147,10 @@ class DevelopmentBridgeTest(GrowthFixture):
             metadata = original(*args)
             self.bridge.cancel_for_agent("linghang")
             return metadata
-        with patch.object(self.bridge, "response_metadata", side_effect=cancel_after_read):
+        with self.deferred_settlement(), patch.object(self.bridge, "response_metadata", side_effect=cancel_after_read):
             with self.assertRaisesRegex(RuntimeError, "已取消"):
                 self.generate()
+            self.assertEqual((self.calls()[0]["status"], self.calls()[0]["charged"]), ("reserved", 0))
         self.assertEqual(self.calls()[0]["charged"], 14)
         self.assertFalse(self.app.budget.config()["paused"])
 
@@ -139,20 +163,20 @@ class DevelopmentBridgeTest(GrowthFixture):
                 results.append(self.bridge.generate_result("synthetic wait", cancel, "linghang", dict(controlled=True, workbench=True)))
             except RuntimeError as error:
                 results.append(str(error))
-        worker = threading.Thread(target=run)
-        worker.start()
-        try:
-            self.assertTrue(self.opener.started.wait(1))
-            cancel.set()
-            worker.join(1)
-            self.assertFalse(worker.is_alive())
-            self.assertIn("已取消", results[0])
-            self.assertEqual(self.opener.timeouts, [600])
-        finally:
-            release.set()
-            worker.join(1)
-            for pending in list(self.bridge._pending):
-                pending.join(1)
+        with self.deferred_settlement():
+            worker = threading.Thread(target=run)
+            worker.start()
+            try:
+                self.assertTrue(self.opener.started.wait(10))
+                cancel.set()
+                worker.join(1)
+                self.assertFalse(worker.is_alive())
+                self.assertIn("已取消", results[0])
+                self.assertEqual(self.opener.timeouts, [600])
+                self.assertEqual((self.calls()[0]["status"], self.calls()[0]["charged"]), ("reserved", 0))
+            finally:
+                release.set()
+                worker.join(1)
         self.assertEqual((self.calls()[0]["status"], self.calls()[0]["charged"]), ("unknown", self.calls()[0]["reserved"]))
         self.assertEqual(self.events("model_response_observed"), [])
         self.assertFalse(self.app.budget.config()["paused"])
@@ -163,9 +187,10 @@ class DevelopmentBridgeTest(GrowthFixture):
             def read(self, *args):
                 bridge.cancel_for_agent("linghang")
                 return b""
-        with patch.object(self.opener, "open", return_value=CancelAtEOF()):
+        with self.deferred_settlement(), patch.object(self.opener, "open", return_value=CancelAtEOF()):
             with self.assertRaisesRegex(RuntimeError, "已取消"):
                 self.generate()
+            self.assertEqual((self.calls()[0]["status"], self.calls()[0]["charged"]), ("reserved", 0))
         row = self.calls()[0]
         self.assertEqual((row["status"], row["charged"]), ("unknown", row["reserved"]))
         self.assertFalse(self.app.budget.config()["paused"])
