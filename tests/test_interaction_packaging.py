@@ -111,7 +111,9 @@ class PrivateWorkPackagingTest(unittest.TestCase):
         with closing(sqlite3.connect(self.data / 'town.sqlite3')) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM v2_documents').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM v2_local_skills').fetchone()[0], 1)
-            self.assertIn(str(repository), db.execute('SELECT value FROM v2_meta WHERE key=?', ('dev-connection-' + project['id'],)).fetchone()[0])
+            connection = json.loads(db.execute('SELECT value FROM v2_meta WHERE key=?',
+                ('dev-connection-' + project['id'],)).fetchone()[0])
+            self.assertEqual(connection['repositories'][0]['path'], str(repository))
 
     def test_external_bundle_private_paths_and_indexes_cannot_reintroduce_local_grants(self):
         self.populate()
