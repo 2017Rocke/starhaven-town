@@ -101,3 +101,9 @@
 /* Protocol controls follow the settings dialog theme without affecting other selects. */
 #model-protocol,#model-auth-type{display:block;width:100%;margin-top:7px;padding:10px;border:1px solid var(--settings-edge);border-radius:0;background:var(--settings-field);color:var(--ink);font:inherit;font-size:13px;line-height:1.7}#model-protocol:focus-visible,#model-auth-type:focus-visible{outline:3px solid #c58d56;outline-offset:4px}
 .resident-work-entry{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;color:var(--muted);font-size:10px;line-height:1.6}.resident-work-entry>span{min-width:0}.resident-work-entry button{flex-shrink:0;border:1px solid var(--line);padding:6px 9px;color:var(--green-dark);background:var(--mint);font:inherit;font-size:11px}.resident-work-entry button:disabled{opacity:.5}.resident-work-entry button:focus-visible{outline:3px solid #c58d56;outline-offset:3px}
+
+/* 小波雕像的点击区与台词气泡，跟随地图世界坐标一起缩放。 */
+.po-landmark{position:absolute;z-index:2;padding:0;border:0;background:none;cursor:pointer}
+.po-landmark:focus-visible{outline:3px solid #b79862;outline-offset:2px}
+.po-bubble{position:absolute;bottom:100%;left:50%;transform:translateX(-50%) scale(var(--map-ui-scale,1));transform-origin:center bottom;background:#fffdf6;border:1px solid #d4ddc1;box-shadow:3px 3px 0 #84926e26;padding:7px 10px;font-size:10px;color:#59684c;white-space:nowrap;pointer-events:none}
+.po-bubble:after{content:"";position:absolute;bottom:-5px;left:50%;width:6px;height:6px;background:#fffdf6;border-bottom:1px solid #d4ddc1;border-right:1px solid #d4ddc1;transform:translateX(-50%) rotate(45deg)}

@@ -562,6 +562,34 @@
     return button;
   }
 
+  // The statue is painted into town.svg, so its click target and speech bubble
+  // live in the world layer at the same map coordinates as the artwork.
+  function poLandmark(map) {
+    const box = { x: 419, y: 316, width: 82, height: 94 };
+    const scaleX = map.core[2] / 960, scaleY = map.core[3] / 660;
+    const button = el("button", "po-landmark");
+    button.type = "button";
+    button.setAttribute("aria-label", "和小波打招呼");
+    button.setAttribute("title", "和小波打招呼");
+    button.style.left = `${map.core[0] + box.x * scaleX}px`;
+    button.style.top = `${map.core[1] + box.y * scaleY}px`;
+    button.style.width = `${box.width * scaleX}px`;
+    button.style.height = `${box.height * scaleY}px`;
+    const bubble = el("span", "po-bubble");
+    bubble.hidden = true;
+    bubble.setAttribute("role", "status");
+    bubble.setAttribute("aria-live", "polite");
+    button.append(bubble);
+    const lines = ["星星抱稳了，路也就直了。", "星探刚绕过我，往森林去啦。"];
+    let index = 0;
+    button.addEventListener("click", () => {
+      bubble.textContent = lines[index % lines.length];
+      bubble.hidden = false;
+      index += 1;
+    });
+    return button;
+  }
+
   // Scenery shares the original town's small pixel steps and muted material palette.
   const SVG_NS = "http://www.w3.org/2000/svg";
   function svgNode(tag, attrs = {}) {
@@ -1038,6 +1066,7 @@
       art.style.left = `${map.core[0]}px`; art.style.top = `${map.core[1]}px`;
       art.style.width = `${map.core[2]}px`; art.style.height = `${map.core[3]}px`;
       world.append(art);
+      world.append(poLandmark(map));
     }
     const backgroundKey = JSON.stringify(ui.state.agents.map(agent => agent.plot?.slot).filter(Number.isInteger).sort((a, b) => a - b));
     if (mapView.background !== backgroundKey) {

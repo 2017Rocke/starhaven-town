@@ -95,6 +95,9 @@ function bounds(points) { return [Math.min(...points.map(p => p[0])), Math.min(.
 function geometry(tree, origin = [0, 0], scale = [1, 1]) {
   const result = [];
   function visit(node, parts, ids, parent, inherited) {
+    // Declarative motion carries no geometry; its animated pixels are checked
+    // through the groups it targets.
+    if (node.tag === "animate" || node.tag === "animateTransform") return;
     const local = [1, 1, 0, 0];
     const remainder = (node.attrs.transform || "").replace(/(translate|scale)\(([^)]*)\)/g, (_, name, raw) => {
       const values = raw.trim().split(/[\s,]+/).map(Number);
@@ -404,10 +407,12 @@ check("the pixel roundabout has a real island hole and a continuous 64px circula
 check("the star-hugging Po statue has actual pixel parts inside the reserved landmark area", () => {
   assert.equal(statueTree.attrs["data-landmark"], "po-star-statue");
   assert.ok(!flatten(fixture.town).some(node => node.attrs.id === "village-fountain"), "the old fountain remains behind the statue");
-  const allowed = [ringCenter[0] - 47, ringCenter[1] - 75, ringCenter[0] + 47, ringCenter[1] + 8];
+  // The statue may grow down onto the island's southern half, but the top edge
+  // stays clear of the scout's twelve-pixel northern corridor.
+  const allowed = [ringCenter[0] - 47, ringCenter[1] - 75, ringCenter[0] + 47, ringCenter[1] + 20];
   assert.ok(statueBounds[0] >= allowed[0] && statueBounds[1] >= allowed[1] && statueBounds[2] <= allowed[2] && statueBounds[3] <= allowed[3], "statue extends beyond the reserved landmark area");
   for (const node of flatten(statueTree)) {
-    assert.ok(["g", "rect", "polygon", "path"].includes(node.tag), `non-pixel statue element ${node.tag}`);
+    assert.ok(["g", "rect", "polygon", "path", "animate", "animateTransform"].includes(node.tag), `non-pixel statue element ${node.tag}`);
     assert.equal(node.attrs.filter, undefined, "statue must not use nested filters");
     assert.ok(!/filter\s*:/.test(node.attrs.style || ""));
     if (node.tag === "rect") assert.ok(!node.attrs.rx && !node.attrs.ry, "statue pixels must have square corners");
